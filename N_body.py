@@ -4,6 +4,18 @@ import matplotlib.pyplot as plt
 import time
 from matplotlib.animation import FuncAnimation
 
+# Some constants
+AU = 1.49597871e11 # meters in an Astronomical Unit
+pc = 3.08567758e16 # meters in a parsec
+hour = 3600 # sec in a hour
+day = 86400 # sec in a day
+month = 2.629744e6 # sec in a month
+yr = 3.1556926e7 # sec in a year
+kyr = 3.1556926e10 # sec in a kilo year
+Myr = 3.1556926e13 # sec in a Mega year
+Gyr = 3.1556926e16 # sec in a Giga year
+
+
 class State():
     """
     This class is the current state of a set up involving a sun and x amount
@@ -232,24 +244,11 @@ class Particle():
              {self.R} at position ({self.x}, {self.y})"
 
 
-def animation(animate_live, make_GIF, state, amount_of_frames, niterations):
+def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size_box):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
     """
-    # Some constants
-    AU = 1.49597871e11 # meters in an Astronomical Unit
-    hour = 3600 # sec in a hour
-    day = 86400 # sec in a day
-    month = 2.629744e6 # sec in a month
-    yr = 3.1556926e7 # sec in a year
-    kyr = 3.1556926e10 # sec in a kilo year
-    Myr = 3.1556926e13 # sec in a Mega year
-    Gyr = 3.1556926e16 # sec in a Giga year
-
-    # simulation settings
-    size_box = 5 * AU # diameter of orbit of pluto
-
     # animation settings
     xlim = -size_box/2, size_box/2
     ylim = -size_box/2, size_box/2
@@ -318,16 +317,10 @@ def set_up():
     """
     This function contains all the input values. The user adjusts them.
     """
-    # Some constants
-    AU = 1.49597871e11 # meters in an Astronomical Unit
-    yr = 3.15576e7 # seconds in a year
-    month = yr / 12 # seconds
-    Gyr = yr * 1e9 # secondes in a Giga year
-
     # simulation settings
-    time_frame = 0.25 * yr # seconds, about the age of our solar system
+    time_frame =  yr # seconds, about the age of our solar system
     niterations = int(12000)
-    size_box = 5 * AU # diameter of orbit of pluto
+    size_box = 8 * pc # diameter of orbit of pluto
 
     # animation settings
     xlim = -size_box/2, size_box/2
@@ -352,8 +345,8 @@ def set_up():
     # particle_density = "power_law"
 
     # initializing begin state
-    state = State(amount_particles, dt, xlim, ylim, particle_size, mass_density,\
-                  particle_density)
+    state = State(amount_particles, dt, xlim, ylim, particle_size, \
+                  mass_density, particle_density)
     state.initiate_star(R_star, M_star, QH)
 
     # toggle force parameters
@@ -367,7 +360,8 @@ def set_up():
     # Choose either one, they can't both be True
     make_GIF = False
     animate_live = True
-    animation(animate_live, make_GIF, state, amount_of_frames, niterations)
+    animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
+              size_box)
 
 
 if __name__ == "__main__":
