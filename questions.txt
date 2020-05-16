@@ -1,0 +1,5 @@
+how much curl does a cloud filled with clumps have?
+
+what should I do with the massdistance figure? I feel like I can't implement
+the values but I should expect my program to have the same outcome as your figure
+So I'll use it as a testing tool to see if my code is reliable.
