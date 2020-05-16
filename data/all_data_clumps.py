@@ -37,15 +37,15 @@ distances = [5.623413251903491, 3.0902954325135905, 5.495408738576246, \
 
 total_mass = 3397.222201528117
 
-data_clumps_log = {}
-for i in range(1,20):
-    name = "clump" + str(i)
-    data_clumps_log[name] = {"mass_log": masses_log[i-1],
-                             "mass": masses[i-1],
-                             "radius_log": radii_log[i-1],
-                             "radius": radii[i-1],
-                             "distance_log": distances_log[i-1],
-                             "distance": distances[i-1]}
+# data_clumps_log = {}
+# for i in range(1,20):
+#     name = "clump" + str(i)
+#     data_clumps_log[name] = {"mass_log": masses_log[i-1],
+#                              "mass": masses[i-1],
+#                              "radius_log": radii_log[i-1],
+#                              "radius": radii[i-1],
+#                              "distance_log": distances_log[i-1],
+#                              "distance": distances[i-1]}
 
 data_clumps_log =  {'clump1': {'mass_log': 0.08,
                                'mass': 1.202264434617413,
@@ -160,4 +160,30 @@ data_clumps_log =  {'clump1': {'mass_log': 0.08,
                                'radius': 0.37153522909717257,
                                'distance_log': 0.25,
                                'distance': 1.7782794100389228}}
-# print(data_clumps_log["clump1"]["mass"])
+
+clump = data_clumps_log["clump19"]
+print("Mass: ", clump["mass"], "M_sun / ", clump["mass"]*mass_sun, "kg")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
