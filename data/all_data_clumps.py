@@ -1,5 +1,17 @@
 # all data about the figures Sam gave me
 
+# Some constants
+AU = 1.49597871e11 # meters in an Astronomical Unit
+pc = 3.08567758e16 # meters in a parsec
+hour = 3600 # sec in a hour
+day = 86400 # sec in a day
+month = 2.629744e6 # sec in a month
+yr = 3.1556926e7 # sec in a year
+kyr = 3.1556926e10 # sec in a kilo year
+Myr = 3.1556926e13 # sec in a Mega year
+Gyr = 3.1556926e16 # sec in a Giga year
+mass_sun = 1.989e30 # kg
+
 masses_log = [0.08, 0.39, 0.88, 1.08, 1.12, 1.21, 1.48, \
               1.60, 1.66, 1.85, 1.89, 1.92, 2.00, 2.15, \
               2.21, 2.28, 2.34, 2.65, 3.24]
@@ -161,8 +173,42 @@ data_clumps_log =  {'clump1': {'mass_log': 0.08,
                                'distance_log': 0.25,
                                'distance': 1.7782794100389228}}
 
-clump = data_clumps_log["clump19"]
-print("Mass: ", clump["mass"], "M_sun / ", clump["mass"]*mass_sun, "kg")
+def Radius_clump(mass):
+    """
+    This function calculates the radius of clumps depending on their mass.
+    I derived this formula of excisting data of mass/radius ratios. See
+    the file "radius_mass_ratio_clumps.pdf" on my github:
+    https://github.com/Hielkes7/Thesis
+
+    R = (M**0.426)/55.55
+    R in pc and M in solar masses
+    """
+    radius = pc / 55.55 * (mass/mass_sun)**0.426
+    return radius
+
+def Mass_clump(radius):
+    """
+    This function calculates the mass of clumps depending on their radius.
+    I derived this formula of excisting data of mass/radius ratios. See
+    the file "radius_mass_ratio_clumps.pdf" on my github:
+    https://github.com/Hielkes7/Thesis
+
+    M = 12590 * R**2.35
+    M in solar masses and R in pc
+    """
+    mass = 12590 * mass_sun * (radius/pc)**2.35
+    return mass
+
+clump = data_clumps_log["clump1"]
+print("Mass:      ", round(clump["mass"]), "M_sun / ", clump["mass"]*mass_sun, "kg")
+print("Radius:    ", round(clump["radius"],3), "pc / ", clump["radius"]*pc, "m")
+print("Dist:      ", round(clump["distance"], 3), "pc / ", clump["distance"]*pc, "m")
+print("Mass_log:  ", clump["mass_log"])
+print("Radius_log:", clump["radius_log"])
+print("Dist_log:  ", clump["distance_log"])
+
+print("Mass calc:", Mass_clump(7.7e15))
+print("Radius calc:", Radius_clump(34*mass_sun)/pc, "pc")
 
 
 
