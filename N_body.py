@@ -14,6 +14,8 @@ yr = 3.1556926e7 # sec in a year
 kyr = 3.1556926e10 # sec in a kilo year
 Myr = 3.1556926e13 # sec in a Mega year
 Gyr = 3.1556926e16 # sec in a Giga year
+mass_sun = 1.989e30 # kg
+G = 6.67408e-11 # m^3 kg^-1 s^-2, the gravitational constant
 
 
 class State():
@@ -21,15 +23,15 @@ class State():
     This class is the current state of a set up involving a sun and x amount
     of clumps.
     """
-    def __init__(self, amount_clumps, dt, xlim, ylim, clump_size, \
-                 mass_density, clump_density):
+    def __init__(self, amount_clumps, dt, xlim, ylim, clump_begin_size, \
+                 clump_distribution, max_velocity_fraction, curl_fraction, \
+                 cloud_mass):
         self.amount_clumps = amount_clumps
         self.clumps = []
         self.xlim = xlim
         self.ylim = ylim
         self.time = 0
         self.dt = dt
-        self.rho = mass_density # kg m^-3
         self.begin_time = time.time()
         self.star = None
 
@@ -39,28 +41,46 @@ class State():
         self.radiation_pressure_on = False
         self.gas_pressure_on = False
 
-        if clump_density == "constant":
-            self.constant_clump_density = True
-            self.power_law_clump_density = False
-        if clump_density == "power_law":
-            self.constant_clump_density = False
-            self.power_law_clump_density = True
+        if clump_distribution == "constant":
+            self.constant_clump_distribution = True
+            self.power_law_clump_distribution = False
+        if clump_distribution == "power_law":
+            self.constant_clump_distribution = False
+            self.power_law_clump_distribution = True
 
         # create all clumps
-        # random.seed(0)
+        random.seed(0)
         for _ in range(self.amount_clumps):
-            r_max = xlim[1]
-            if self.constant_clump_density:
+            r_max = xlim[1] * 0.8
+            if self.constant_clump_distribution:
                 r = random.random() * r_max
-            if self.power_law_clump_density:
+            if self.power_law_clump_distribution:
                 r = 1/ random.random()**2 * r_max / 100
+
+            # angle of position
             theta = random.random() * 2 * np.pi
             x = r * np.cos(theta) # m
             y = r * np.sin(theta) # m
-            vx = (random.random()-0.5) * 1e4 # m s^-1
-            vy = (random.random()-0.5) * 1e4 # m s^-1
-            R = clump_size # m
-            m = 4/3 * np.pi * self.rho * R**3
+
+            # TODO: escape velocity formula isn't correct since the CM is not a
+            # point source. Fix it by negating all gravity from clumps further
+            # away from the CM than the one looked at.
+            max_velocity = max_velocity_fraction * Escape_velocity(cloud_mass, r)
+
+            # angle of direction of initial velocity
+            phi = random.random() * 2 * np.pi
+            v_random = random.random() * max_velocity
+            vx_random = v_random * np.cos(phi)
+            vy_random = v_random * np.sin(phi)
+
+            vx_curl = curl_fraction * -np.sin(theta) * max_velocity
+            vy_curl = curl_fraction * np.cos(theta) * max_velocity
+
+            vx = curl_fraction * vx_curl + (1 - curl_fraction) * vx_random
+            vy = curl_fraction * vy_curl + (1 - curl_fraction) * vy_random
+
+            R = clump_begin_size # m
+            m = Mass_clump(R)
             clump = Object(x, y, vx, vy, m, R)
             self.clumps.append(clump)
 
@@ -99,6 +119,12 @@ class State():
 
             clump.x += clump.vx * self.dt
             clump.y += clump.vy * self.dt
+
+            # if clumps have escaped the cloud and are beyond view, remove them
+            if abs(clump.x) > 2 * self.xlim[1]:
+                self.clumps.remove(clump)
+            elif abs(clump.y) > 2 * self.ylim[1]:
+                self.clumps.remove(clump)
 
         # update time
         self.time += self.dt
@@ -154,8 +180,6 @@ class State():
         This function calculate the acceleration of all clumps due to the
         gravitational pull of the star
         """
-        G = 6.67408e-11 # m^3 kg^-1 s^-2
-
         if not self.star:
             raise Exception("Error, can't calculate gravity of star. There is no star")
 
@@ -177,8 +201,6 @@ class State():
         This function calculate the acceleration of all clumps due to the
         gravitational pull of the other clumps
         """
-        G = 6.67408e-11 # m^3 kg^-1 s^-2
-
         i = 0
         while i < len(self.clumps):
             j = i + 1
@@ -209,7 +231,10 @@ class State():
         then create a new clump of combined mass, momentum and new corresponding
         size. "clump1" will be updated, "clump2" will be removed.
         """
-        if dr < 0.1 * clump1.R + clump2.R:
+        # the merge factor states how much two clumps have to overlap before
+        # they merge
+        merge_factor = 0.2
+        if dr < merge_factor * clump1.R + clump2.R:
             clump1.x = (clump1.x *clump1.m + clump2.x * clump2.m)\
                           / (clump1.m + clump2.m)
             clump1.y = (clump1.y *clump1.m + clump2.y * clump2.m)\
@@ -219,32 +244,10 @@ class State():
             clump1.vy = (clump1.vy *clump1.m + clump2.vy * clump2.m)\
                            / (clump1.m + clump2.m)
             clump1.m = clump1.m + clump2.m
-            clump1.R = (3/4 * clump1.m / np.pi / self.rho)**(float(1)/3)
+            clump1.R = Radius_clump(clump1.m)
             self.clumps.remove(clump2)
             return True
         return False
-
-    def Radius_clump(Mass):
-        """
-        This function calculates the radius of clumps depending on their mass.
-        I derived this formula of excisting data of mass/radius ratios. See
-        the file "radius_mass_ratio_clumps.pdf" on my github:
-        https://github.com/Hielkes7/Thesis
-        """
-        # I derived this formula of excisting data of mass/radius ratios.
-        Radius = (1/55.550)* Mass**(0.426)
-        return Radius
-
-    def Mass_clump(Radius):
-        """
-        This function calculates the mass of clumps depending on their radius.
-        I derived this formula of excisting data of mass/radius ratios. See
-        the file "radius_mass_ratio_clumps.pdf" on my github:
-        https://github.com/Hielkes7/Thesis
-        """
-        # I derived this formula of excisting data of mass/radius ratios.
-        Mass = 12590 * Radius**(2.35)
-        return Mass
 
     def __str__(self):
         return f"{self.amount_clumps} clumps in a {self.xlim[1]}x \
@@ -269,6 +272,38 @@ class Object():
       return f"A clump of mass {self.m} and radius \
              {self.R} at position ({self.x}, {self.y})"
 
+def Radius_clump(mass):
+    """
+    This function calculates the radius of clumps depending on their mass.
+    I derived this formula of excisting data of mass/radius ratios. See
+    the file "radius_mass_ratio_clumps.pdf" on my github:
+    https://github.com/Hielkes7/Thesis
+
+    R = (M**0.426)/55.55
+    R in pc and M in solar masses
+    """
+    radius = pc / 55.55 * (mass/mass_sun)**0.426
+    return radius
+
+def Mass_clump(radius):
+    """
+    This function calculates the mass of clumps depending on their radius.
+    I derived this formula of excisting data of mass/radius ratios. See
+    the file "radius_mass_ratio_clumps.pdf" on my github:
+    https://github.com/Hielkes7/Thesis
+
+    M = 12590 * R**2.35
+    M in solar masses and R in pc
+    """
+    mass = 12590 * mass_sun * (radius/pc)**2.35
+    return mass
+
+def Escape_velocity(mass, radius):
+    """
+    This function return the escape velocity of a system of mass and a radius
+    fromt the centre of mass of the system
+    """
+    return np.sqrt(2 * G * mass / radius)
 
 def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size_box):
     """
@@ -305,16 +340,28 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
                     transform=ax.transAxes, ha="center")
 
     def update(frame):
-        # if frame != 0:
-        #     # information feedback to estimate duration of animation
-        #     print(frame, "/", amount_of_frames, "  Time:", (time.time() - \
-        #           state.begin_time)*amount_of_frames/frame, "sec")
+        if make_GIF and frame != 0:
+            # information feedback to estimate duration of animation
+            current_sec = int(time.time() - state.begin_time)
+            current_min = int(current_sec / 60)
+            current_hour = int(current_min / 60)
 
+            total_sec = int(current_sec * amount_of_frames / frame)
+            total_min = int(total_sec / 60)
+            total_hours = int(total_min / 60)
+
+            hours_left = total_hours - current_hour
+            min_left = total_min - current_min
+            sec_left = total_sec - current_sec
+
+            print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s" \
+                  %(frame, amount_of_frames, total_hours, total_min%60, \
+                  total_sec%60, hours_left, min_left%60, sec_left%60), end="\r")
 
         offsets = []
         sizes = []
-        title.set_text(u"{} / {} iterations - {} months".format(frame*step_size,\
-                       niterations, round(state.time / month, 1)))
+        title.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
+                       niterations, round(state.time / Myr, 1)))
 
         # animate star
         if state.star:
@@ -340,15 +387,14 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
     if make_GIF:
         myAnimation.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
 
-
 def set_up():
     """
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  10 * yr # seconds, about the age of our solar system
+    time_frame =  25 * Myr # seconds, about the age of our solar system
     niterations = int(12000)
-    size_box = 8 * pc # diameter of orbit of pluto
+    size_box = 20 * pc # diameter of orbit of pluto
 
     # animation settings
     xlim = -size_box/2, size_box/2
@@ -362,19 +408,21 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 20
-    clump_size = size_box / 1000 # meters,
-    # Each clump is still about 1000x larger than earth. However this is the
-    # minimum size which will be visible in the animation
-    mass_density = 1 # kg m^-3 (rock ish)
+    amount_clumps = 500
+    cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
+    clump_mass = cloud_mass / amount_clumps
+    clump_begin_size = Radius_clump(clump_mass)
+    max_velocity_fraction = 0.8
+    curl_fraction = 0.8
 
     # choose one
-    clump_density = "constant"
-    # clump_density = "power_law"
+    clump_distribution = "constant"
+    # clump_distribution = "power_law"
 
     # initializing begin state
-    state = State(amount_clumps, dt, xlim, ylim, clump_size, \
-                  mass_density, clump_density)
+    state = State(amount_clumps, dt, xlim, ylim, clump_begin_size, \
+                  clump_distribution, max_velocity_fraction, curl_fraction, \
+                  cloud_mass)
     # state.initiate_star(R_star, M_star, QH)
 
     # toggle force parameters
@@ -386,8 +434,8 @@ def set_up():
     # TODO state.stellar_wind_on = True
 
     # Choose either one, they can't both be True
-    make_GIF = False
-    animate_live = True
+    make_GIF = True # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
+    animate_live = False
     animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
               size_box)
 
