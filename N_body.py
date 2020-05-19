@@ -34,6 +34,7 @@ class State():
         self.dt = dt
         self.begin_time = time.time()
         self.star = None
+        self.CM = None
 
         # toggle variables, they get toggled on somewhere else
         self.gravity_star_on = False
@@ -48,8 +49,8 @@ class State():
             self.constant_clump_distribution = False
             self.power_law_clump_distribution = True
 
-        # create all clumps
-        random.seed(0)
+        # initiate all positions of the clumps
+        # random.seed(0)
         for _ in range(self.amount_clumps):
             r_max = xlim[1] * 0.8
             if self.constant_clump_distribution:
@@ -62,27 +63,51 @@ class State():
             x = r * np.cos(theta) # m
             y = r * np.sin(theta) # m
 
-            # TODO: escape velocity formula isn't correct since the CM is not a
-            # point source. Fix it by negating all gravity from clumps further
-            # away from the CM than the one looked at.
-            max_velocity = max_velocity_fraction * Escape_velocity(cloud_mass, r)
-
-            # angle of direction of initial velocity
-            phi = random.random() * 2 * np.pi
-            v_random = random.random() * max_velocity
-            vx_random = v_random * np.cos(phi)
-            vy_random = v_random * np.sin(phi)
-
-            vx_curl = curl_fraction * -np.sin(theta) * max_velocity
-            vy_curl = curl_fraction * np.cos(theta) * max_velocity
-
-            vx = curl_fraction * vx_curl + (1 - curl_fraction) * vx_random
-            vy = curl_fraction * vy_curl + (1 - curl_fraction) * vy_random
+            # the initial velocity will be calculated later on in the code
+            vx = 0
+            vy = 0
 
             R = clump_begin_size # m
             m = Mass_clump(R)
             clump = Object(x, y, vx, vy, m, R)
             self.clumps.append(clump)
+
+        # determine centre of mass (probably close to 0,0)
+        x_sum = 0
+        y_sum = 0
+        mass_sum = 0
+        for clump in self.clumps:
+            mass_sum += clump.m
+            x_sum += clump.m * clump.x
+            y_sum += clump.m * clump.y
+        x_CM = x_sum / mass_sum
+        y_CM = y_sum / mass_sum
+        self.CM = x_CM, y_CM
+
+        # initiate all starting velocities of the clumps
+        for clump in self.clumps:
+            max_velocity = max_velocity_fraction * self.Orbital_speed(clump)
+
+            # random velocity in random direction
+            phi = random.random() * 2 * np.pi
+            v_random = random.random() * max_velocity
+            vx_random = v_random * np.cos(phi)
+            vy_random = v_random * np.sin(phi)
+
+            # chosen velocity in fixed direction to generate curl to the cloud
+            dx = clump.x - self.CM[0]
+            dy = clump.y - self.CM[1]
+            if dx > 0:
+                theta = np.arctan(dy / dx)
+            if dx < 0:
+                theta = np.pi + np.arctan(dy / dx)
+            vx_curl = -np.sin(theta) * max_velocity
+            vy_curl =  np.cos(theta) * max_velocity
+
+            # initial velocity is combination of chosen and random velocity
+            # with a ratio set by the variable "curl_fraction"
+            clump.vx = curl_fraction * vx_curl + (1 - curl_fraction) * vx_random
+            clump.vy = curl_fraction * vy_curl + (1 - curl_fraction) * vy_random
 
 
     def initiate_star(self, R_star, M_star, QH):
@@ -216,6 +241,34 @@ class State():
                 j += 1
             i += 1
 
+    def Orbital_speed(self, clump):
+        """
+        This function returns the velocity needed for a clump to escape the
+        cloud.
+
+        V_orbit = sqrt(G * M / r)
+        a_grav   = G * M / r^2
+
+        V_orbit = sqrt(r * a_grav)
+        """
+        # reset clump his acceleration just in case it wasn't zero
+        clump.ax = 0
+        clump.ay = 0
+
+        # determine acceleration of clump towards CM
+        for other_clump in self.clumps:
+            if other_clump != clump:
+                dr, dx, dy = self.Distance(clump, other_clump)
+                a = G * other_clump.m / dr**2
+                clump.ax += a * dx / dr
+                clump.ay += a * dy / dr
+
+        distance_CM = np.sqrt((clump.x - self.CM[0])**2 + \
+                              (clump.y - self.CM[1])**2)
+        acceleration = np.sqrt(clump.ax**2 + clump.ay**2)
+        orbital_speed = np.sqrt(distance_CM * acceleration)
+        return orbital_speed
+
     def Distance(self, clump1, clump2):
         """
         This function returns the distances between the two given clumps
@@ -298,13 +351,6 @@ def Mass_clump(radius):
     mass = 12590 * mass_sun * (radius/pc)**2.35
     return mass
 
-def Escape_velocity(mass, radius):
-    """
-    This function return the escape velocity of a system of mass and a radius
-    fromt the centre of mass of the system
-    """
-    return np.sqrt(2 * G * mass / radius)
-
 def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size_box):
     """
     This function animates evolution of the set up. There is an option for live
@@ -354,9 +400,10 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
             min_left = total_min - current_min
             sec_left = total_sec - current_sec
 
-            print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s" \
+            print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s    Sec left: %d" \
                   %(frame, amount_of_frames, total_hours, total_min%60, \
-                  total_sec%60, hours_left, min_left%60, sec_left%60), end="\r")
+                  total_sec%60, hours_left, min_left%60, sec_left%60, \
+                  sec_left), end="\r")
 
         offsets = []
         sizes = []
@@ -392,14 +439,14 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  25 * Myr # seconds, about the age of our solar system
-    niterations = int(12000)
+    time_frame =  10 * Myr # seconds, about the age of our solar system
+    niterations = int(3000)
     size_box = 20 * pc # diameter of orbit of pluto
 
     # animation settings
     xlim = -size_box/2, size_box/2
     ylim = -size_box/2, size_box/2
-    amount_of_frames = int(600)
+    amount_of_frames = int(300)
     dt = time_frame / niterations # s
 
     # star settings
@@ -408,12 +455,12 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 500
+    amount_clumps = 200
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     clump_mass = cloud_mass / amount_clumps
     clump_begin_size = Radius_clump(clump_mass)
-    max_velocity_fraction = 0.8
-    curl_fraction = 0.8
+    max_velocity_fraction = 1
+    curl_fraction = 1
 
     # choose one
     clump_distribution = "constant"
