@@ -3,6 +3,7 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import random
 import matplotlib.pyplot as plt
 import time
+import collections
 from matplotlib.animation import FuncAnimation
 
 # Some constants
@@ -25,8 +26,8 @@ class State():
     of clumps.
     """
     def __init__(self, toggle_3D, amount_clumps, dt, boundary_box, \
-                 clump_radius, clump_distribution, max_velocity_fraction, \
-                 curl_fraction, cloud_mass):
+                 initial_clump_radius, clump_distribution, max_velocity_fraction, \
+                 curl_fraction, cloud_mass, initial_clump_mass):
         self.amount_clumps = amount_clumps
         self.clumps = []
         self.boundary_box = boundary_box
@@ -36,6 +37,7 @@ class State():
         self.star = None
         self.CM = None
         self.toggle_3D = toggle_3D
+        self.initial_clump_mass = initial_clump_mass
 
         # toggle variables, they get toggled on somewhere else
         self.gravity_star_on = False
@@ -76,7 +78,7 @@ class State():
             vy = 0
             vz = 0
 
-            R = clump_radius # m
+            R = initial_clump_radius # m
             m = Mass_clump(R)
             clump = Object(x, y, z, vx, vy, vz, m, R)
             self.clumps.append(clump)
@@ -450,16 +452,15 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         x.append(clump.x)
         y.append(clump.y)
 
-    fig = plt.figure()
-    plt.grid()
-    fig.set_size_inches(10, 10) # 10 inches wide and long
-    scat = plt.scatter(x, y, facecolor = "red")
-    ax = fig.add_subplot(111)
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.grid()
+    fig.set_size_inches(20, 10) # 10 inches wide and long
+    scat = ax1.scatter(x, y, facecolor = "red")
 
-    title = ax.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                    transform=ax.transAxes, ha="center")
+    title1 = ax1.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                    transform=ax1.transAxes, ha="center")
 
-    def update(frame):
+    def update1(frame):
         if make_GIF and frame != 0:
             # information feedback to estimate duration of animation
             current_sec = int(time.time() - state.begin_time)
@@ -481,7 +482,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
 
         offsets = []
         sizes = []
-        title.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
+        title1.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
                        niterations, round(state.time / Myr, 1)))
 
         # animate star
@@ -502,14 +503,51 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         if frame > 30:
             for _ in range(step_size):
                 state.Step()
-        return scat,title,
+        return scat,title1,
 
-    myAnimation = FuncAnimation(fig, update, frames = amount_of_frames + 30, \
-                                interval = 10, repeat=False)
-    ax.set_xlim(boundary_box[0], boundary_box[1])
-    ax.set_ylim(boundary_box[0], boundary_box[1])
-    ax.set_xlabel('Distance (meters)')
-    ax.set_ylabel('Distance (meters)')
+    myAnimation1 = FuncAnimation(fig, update1, frames = amount_of_frames + 30, \
+                                 interval = 10, repeat=False)
+
+    ax1.set_xlim(boundary_box[0], boundary_box[1])
+    ax1.set_ylim(boundary_box[0], boundary_box[1])
+    ax1.set_xlabel('Distance (meters)')
+    ax1.set_ylabel('Distance (meters)')
+
+    # RHS bar plot animation
+    title2 = ax1.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                    transform=ax1.transAxes, ha="center")
+
+#################################### histogram part #######################
+
+    def update2(frame):
+        title2.set_text("Mass spectrum of clumps")
+
+        # make a list with all masses of all clumps
+        all_masses = []
+        for clump in state.clumps:
+            all_masses.append(clump.m)
+
+        counted_masses = sorted(collections.Counter(all_masses).items())
+        mass_num = [i[0] for i in counted_masses]
+        mass_values = [i[0] for i in counted_masses]
+        freq_masses = [i[1] for i in counted_masses]
+
+        # creating bins list
+        bins = []
+        for i in range(len(mass_values) + 1):
+            bins.append(mass_values[0] * (i + 0.5))
+
+        ax2.hist(all_masses, bins=bins)
+        ax2.set_xticks(mass_values)
+        ax2.set_xticklabels(mass_values)
+
+        return title2
+
+    myAnimation2 = FuncAnimation(fig, update2, frames=amount_of_frames+30, \
+                                 interval=100, repeat=False)
+
+###################################################################
+
     if animate_live:
         plt.show()
     if make_GIF:
@@ -523,7 +561,7 @@ def set_up():
     time_frame =  10 * Myr # seconds, about the age of our solar system
     niterations = int(3000)
     size_box = 20 * pc # diameter of orbit of pluto
-    toggle_3D = True
+    toggle_3D = False
 
 
     # animation settings
@@ -540,8 +578,8 @@ def set_up():
     # clump settings
     amount_clumps = 30
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
-    clump_mass = cloud_mass / amount_clumps
-    clump_radius = Radius_clump(clump_mass)
+    initial_clump_mass = cloud_mass / amount_clumps
+    initial_clump_radius = Radius_clump(initial_clump_mass)
     max_velocity_fraction = 1
     curl_fraction = 1
 
@@ -550,9 +588,9 @@ def set_up():
     # clump_distribution = "power_law"
 
     # initializing begin state
-    state = State(toggle_3D, amount_clumps, dt, boundary_box, clump_radius, \
+    state = State(toggle_3D, amount_clumps, dt, boundary_box, initial_clump_radius, \
                   clump_distribution, max_velocity_fraction, curl_fraction, \
-                  cloud_mass)
+                  cloud_mass, initial_clump_mass)
     # state.Initiate_star(R_star, M_star, QH)
 
     # toggle force parameters
@@ -588,15 +626,14 @@ def plot_3D():
     # star settings
     # minimum visable radius is size_box / 1000
     R_star = 1e17 # radius sun displayed in anmiation, not in scale
-    clump_radius = 5e14
     M_star = 1.989e30# mass sun in kg
     QH = 1e45 # photon per second emitted
 
     # clump settings
     amount_clumps = 10
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
-    clump_mass = cloud_mass / amount_clumps
-    clump_radius = Radius_clump(clump_mass)
+    initial_clump_mass = cloud_mass / amount_clumps
+    initial_clump_radius = Radius_clump(initial_clump_mass)
     max_velocity_fraction = 1
     curl_fraction = 1
 
@@ -605,9 +642,9 @@ def plot_3D():
     # clump_distribution = "power_law"
 
     # initializing begin state
-    state = State(toggle_3D, amount_clumps, dt, boundary_box, clump_radius, \
+    state = State(toggle_3D, amount_clumps, dt, boundary_box, initial_clump_radius, \
                   clump_distribution, max_velocity_fraction, curl_fraction, \
-                  cloud_mass)
+                  cloud_mass, initial_clump_mass)
     # state.Initiate_star(R_star, M_star, QH)
 
     state.gravity_clumps_on = True
