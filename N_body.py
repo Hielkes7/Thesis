@@ -347,8 +347,9 @@ class State():
         """
         # the merge factor states how much two clumps have to overlap before
         # they merge
-        merge_factor = 0.2
-        if dr < merge_factor * clump1.R + clump2.R:
+        merge_factor = 0.4
+        if dr < merge_factor * (clump1.R + clump2.R):
+
             # find centre of mass
             clump1.x = (clump1.x *clump1.m + clump2.x * clump2.m)\
                           / (clump1.m + clump2.m)
@@ -522,7 +523,7 @@ def set_up():
     time_frame =  10 * Myr # seconds, about the age of our solar system
     niterations = int(3000)
     size_box = 20 * pc # diameter of orbit of pluto
-    toggle_3D = False
+    toggle_3D = True
 
 
     # animation settings
@@ -537,7 +538,7 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 50
+    amount_clumps = 30
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     clump_mass = cloud_mass / amount_clumps
     clump_radius = Radius_clump(clump_mass)
@@ -568,7 +569,7 @@ def set_up():
     animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
               size_box)
 
-def test_3D():
+def plot_3D():
     """
     This function contains all the input values. The user adjusts them.
     """
@@ -615,5 +616,5 @@ def test_3D():
 
 
 if __name__ == "__main__":
-    test_3D()
-    # set_up()
+    # plot_3D()
+    set_up()
