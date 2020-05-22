@@ -584,11 +584,6 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         for mass_value in mass_values:
             axis_labels.append(round(mass_value / state.initial_clump_mass))
 
-        print(bins)
-        print(axis_labels)
-        print(all_masses)
-        print()
-
         ax_hist.cla()
         ax_hist.hist(all_masses, bins=bins)
         ax_hist.set_xticks(mass_values)
