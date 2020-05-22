@@ -6,4 +6,6 @@ In the function "set_up" all the initial conditions are chosen by the user. Ther
 
 Tips: When just using the gravity of the star you can animate up to 2k particles before it gets laggy. When the gravity of the particles are on as well, you can max animate around 200 particles before it gets laggy.
 
+update 23-05-2020: The program has gotten pretty big with a lot of options. If you want to know how the program can be operated I'll update the README but for now I'll leave it how it is.
+
 Cheers.
