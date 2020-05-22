@@ -452,14 +452,13 @@ def Mass_clump(radius):
     mass = 12590 * mass_sun * (radius/pc)**2.35
     return mass
 
-def animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
-              size_box, animate_hist):
+def animation(make_GIF, state, amount_of_frames, niterations, \
+              size_box, animate_hist, animate_scat):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
     """
     # animation settings
-    boundary_box = -size_box/2, size_box/2
     step_size = int(niterations / amount_of_frames) # iterations done between each frame
 
     x = []
@@ -475,98 +474,105 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
         x.append(clump.x)
         y.append(clump.y)
 
-    if animate_hist:
+    # combined plot of the scatter animation and histogram of mass specturm
+    if animate_hist and animate_scat:
         fig, (ax_scat, ax_hist) = plt.subplots(1, 2)
         fig.set_size_inches(17.6, 8) # inches wide and long
-    else:
+
+    # just the animation of the scatter plots of clumps
+    elif animate_scat:
         fig, ax_scat = plt.subplots(1, 1)
         fig.set_size_inches(10, 10) # 10 inches wide and long
 
-    ax_scat.grid()
-    scat = ax_scat.scatter(x, y, facecolor = "red")
+    # just the histogram of the mass specturm
+    elif animate_hist:
+        fig, ax_hist = plt.subplots(1, 1)
+        fig.set_size_inches(10, 10) # 10 inches wide and long
 
-    title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                    transform=ax_scat.transAxes, ha="center")
+    if animate_scat:
+        ax_scat.grid()
+        scat = ax_scat.scatter(x, y, facecolor = "red")
 
-    # creating ticks on axis
-    amount_of_pc = int(state.boundary_box[1] / pc) * 2 + 1
-    max_amount_ticks = 21
-    factor_pc = int(amount_of_pc / max_amount_ticks) + 1
-    amount_of_ticks = int(amount_of_pc / factor_pc) + 1
-    middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
-    mass_values = []
-    axis_labels = []
-    for i in range(amount_of_ticks):
-        axis_labels.append((i - middle_tick) * factor_pc)
-        mass_values.append((i - middle_tick) * factor_pc * pc)
+        title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                        transform=ax_scat.transAxes, ha="center")
 
-    ax_scat.set_xlabel('Distance (pc)')
-    ax_scat.set_ylabel('Distance (pc)')
+        # creating ticks on axis
+        amount_of_pc = int(state.boundary_box[1] / pc) * 2 + 1
+        max_amount_ticks = 21
+        factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+        amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+        middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
+        mass_values = []
+        axis_labels = []
+        for i in range(amount_of_ticks):
+            axis_labels.append((i - middle_tick) * factor_pc)
+            mass_values.append((i - middle_tick) * factor_pc * pc)
 
-    ax_scat.set_xticks(mass_values)
-    ax_scat.set_xticklabels(axis_labels)
-    ax_scat.set_yticks(mass_values)
-    ax_scat.set_yticklabels(axis_labels)
+        ax_scat.set_xlabel('Distance (pc)')
+        ax_scat.set_ylabel('Distance (pc)')
 
-    ax_scat.set_xlim(state.boundary_box)
-    ax_scat.set_ylim(state.boundary_box)
+        ax_scat.set_xticks(mass_values)
+        ax_scat.set_xticklabels(axis_labels)
+        ax_scat.set_yticks(mass_values)
+        ax_scat.set_yticklabels(axis_labels)
 
-    ax_scat.set_xlabel('Distance (pc)')
-    ax_scat.set_ylabel('Distance (pc)')
+        ax_scat.set_xlim(state.boundary_box)
+        ax_scat.set_ylim(state.boundary_box)
 
-    def update_scat(frame):
-        if make_GIF and frame != 0:
-            # information feedback to estimate duration of animation
-            current_sec = int(time.time() - state.begin_time)
-            current_min = int(current_sec / 60)
-            current_hour = int(current_min / 60)
+        ax_scat.set_xlabel('Distance (pc)')
+        ax_scat.set_ylabel('Distance (pc)')
 
-            total_sec = int(current_sec * (amount_of_frames + 30) / frame)
-            total_min = int(total_sec / 60)
-            total_hours = int(total_min / 60)
+        def update_scat(frame):
+            if make_GIF and frame != 0:
+                # information feedback to estimate duration of animation
+                current_sec = int(time.time() - state.begin_time)
+                current_min = int(current_sec / 60)
+                current_hour = int(current_min / 60)
 
-            hours_left = total_hours - current_hour
-            min_left = total_min - current_min
-            sec_left = total_sec - current_sec
+                total_sec = int(current_sec * amount_of_frames / frame)
+                total_min = int(total_sec / 60)
+                total_hours = int(total_min / 60)
 
-            print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s    Sec left: %d" \
-                  %(frame - 30, amount_of_frames, total_hours, total_min%60, \
-                  total_sec%60, hours_left, min_left%60, sec_left%60, \
-                  sec_left), end="\r")
+                hours_left = total_hours - current_hour
+                min_left = total_min - current_min
+                sec_left = total_sec - current_sec
 
-        offsets = []
-        sizes = []
-        title_scat.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
-                       niterations, round(state.time / Myr, 1)))
+                print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s    Sec left: %d" \
+                      %(frame, amount_of_frames, total_hours, total_min%60, \
+                      total_sec%60, hours_left, min_left%60, sec_left%60, \
+                      sec_left), end="\r")
 
-        # animate star
-        if state.star:
-            offsets.append([state.star.x, state.star.y])
-            sizes.append(1.24e6 * state.star.R**2 * size_box**(-2))
-            # 1.24e6 is determined by just trying and it works for having 10
-            # inch plot dimensions
+            offsets = []
+            sizes = []
+            title_scat.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
+                           niterations, round(state.time / Myr, 1)))
 
-        # animate clumps
-        for clump in state.clumps:
-            offsets.append([clump.x, clump.y])
-            sizes.append(1.24e6 * clump.R**2 * size_box**(-2))
-        scat.set_offsets(offsets)
-        scat.set_sizes(sizes)
+            # animate star
+            if state.star:
+                offsets.append([state.star.x, state.star.y])
+                sizes.append(1.24e6 * state.star.R**2 * size_box**(-2))
+                # 1.24e6 is determined by just trying and it works for having 10
+                # inch plot dimensions
 
-        # adding a second of stationary footage to make watching easier
-        if frame > 30:
+            # animate clumps
+            for clump in state.clumps:
+                offsets.append([clump.x, clump.y])
+                sizes.append(1.24e6 * clump.R**2 * size_box**(-2))
+            scat.set_offsets(offsets)
+            scat.set_sizes(sizes)
+
+            # each frame has "step_size" iterations done
             for _ in range(step_size):
                 state.Step()
-        return scat,title_scat,
+            return scat, title_scat,
 
-    myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames + 30, \
-                                 interval = 10, repeat=False)
+        myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames, \
+                                     interval = 10, repeat=False)
 
     # the histogram part
     if animate_hist:
-        title_hist = ax_scat.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                        transform=ax_scat.transAxes, ha="center")
-
+        title_hist = ax_hist.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                        transform=ax_hist.transAxes, ha="center")
 
         def update_hist(frame):
             title_hist.set_text("Mass spectrum of clumps")
@@ -576,7 +582,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
             for clump in state.clumps:
                 all_masses.append(clump.m)
 
-            # we want no more than 30 ticks
+            # we want no more than 20 ticks
             axis_ticks = []
             size_ticks = int(state.amount_clumps / 21) + 1
             amount_of_ticks = int(state.amount_clumps / size_ticks)
@@ -603,16 +609,22 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
             ax_hist.set_xticklabels(axis_labels)
             ax_hist.set_xlabel('Mass (initial clump mass)')
             ax_hist.set_ylabel('Frequency')
+            plt.title("Mass spectrum after %d iterations" %(frame * step_size))
 
-            return title_hist
+            # each frame has "step_size" iterations done
+            if not animate_scat:
+                for _ in range(step_size):
+                    state.Step()
+            return title_hist,
 
-        myAnimation_hist = FuncAnimation(fig, update_hist, frames=amount_of_frames+30, \
-                                     interval=1000, repeat=False)
+        myAnimation_hist = FuncAnimation(fig, update_hist, \
+                           frames=amount_of_frames, \
+                           interval=10, repeat=False)
 
-    if animate_live:
-        plt.show()
     if make_GIF:
         myAnimation.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
+    else:
+        plt.show()
 
 def set_up():
     """
@@ -644,17 +656,15 @@ def set_up():
     max_velocity_fraction = 0.8
     curl_fraction = 0.6
 
-    # units of data
-
-
     # choose one
     clump_distribution = "constant"
     # clump_distribution = "power_law"
 
     # initializing begin state
-    state = State(toggle_3D, amount_clumps, dt, boundary_box, initial_clump_radius, \
-                  clump_distribution, max_velocity_fraction, curl_fraction, \
-                  cloud_mass, initial_clump_mass)
+    state = State(toggle_3D, amount_clumps, dt, boundary_box, \
+                  initial_clump_radius, clump_distribution, \
+                  max_velocity_fraction, curl_fraction, cloud_mass, \
+                  initial_clump_mass)
     # state.Initiate_star(R_star, M_star, QH)
     # state.Plot()
 
@@ -668,10 +678,10 @@ def set_up():
 
     # Choose either one, they can't both be True
     make_GIF = False # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
-    animate_live = True
-    animate_hist = False
-    animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
-              size_box, animate_hist)
+    animate_scat = False
+    animate_hist = True
+    animation(make_GIF, state, amount_of_frames, \
+              niterations, size_box, animate_hist, animate_scat)
 
 if __name__ == "__main__":
     # plot_3D()
