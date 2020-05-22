@@ -453,7 +453,7 @@ def Mass_clump(radius):
     return mass
 
 def animation(make_GIF, state, amount_of_frames, niterations, \
-              size_box, animate_hist, animate_scat):
+              size_box, animate_hist, animate_scat, hist_axis_fixed):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -603,13 +603,14 @@ def animation(make_GIF, state, amount_of_frames, niterations, \
                 axis_labels.append(int(i * size_ticks))
 
             ax_hist.cla()
-            ax_hist.hist(all_masses, bins=bins)
+            ax_hist.hist(all_masses, bins=bins, rwidth=0.75)
             ax_hist.set_xticks(mass_values)
-            ax_hist.set_yticks(axis_ticks)
+            if hist_axis_fixed:
+                ax_hist.set_yticks(axis_ticks)
             ax_hist.set_xticklabels(axis_labels)
             ax_hist.set_xlabel('Mass (initial clump mass)')
             ax_hist.set_ylabel('Frequency')
-            plt.title("Mass spectrum after %d iterations" %(frame * step_size))
+            plt.title("Mass spectrum after %d iterations" %((frame+1) * step_size))
 
             # each frame has "step_size" iterations done
             if not animate_scat:
@@ -649,7 +650,7 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 150
+    amount_clumps = 30
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     initial_clump_radius = Radius_clump(initial_clump_mass)
@@ -680,8 +681,10 @@ def set_up():
     make_GIF = False # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
     animate_scat = False
     animate_hist = True
+    hist_axis_fixed = True
     animation(make_GIF, state, amount_of_frames, \
-              niterations, size_box, animate_hist, animate_scat)
+              niterations, size_box, animate_hist, animate_scat, \
+              hist_axis_fixed)
 
 if __name__ == "__main__":
     # plot_3D()
