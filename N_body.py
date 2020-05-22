@@ -190,6 +190,19 @@ class State():
         fig = plt.figure()
         fig.set_size_inches(10, 10) # 10 inches wide and long
 
+        # creating ticks on axis
+        amount_of_pc = int(self.boundary_box[1] / pc) * 2 + 1
+        max_amount_ticks = 21
+        factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+        amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+        middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
+        mass_values = []
+        axis_labels = []
+        for i in range(amount_of_ticks):
+            axis_labels.append((i - middle_tick) * factor_pc)
+            mass_values.append((i - middle_tick) * factor_pc * pc)
+
+        # if the simulation is in 3D
         if self.toggle_3D:
             ax = fig.add_subplot(111, projection='3d')
 
@@ -200,12 +213,11 @@ class State():
                 ax.scatter(clump.x, clump.y, clump.z, s= np.pi * 1e5 * clump.R**2\
                            / self.boundary_box[1]**2, c='red')
 
-            ax.set_xlim(self.boundary_box)
-            ax.set_ylim(self.boundary_box)
+
             ax.set_zlim(self.boundary_box)
-            ax.set_xlabel('x axis (meter)')
-            ax.set_ylabel('y axis (meter)')
-            ax.set_zlabel('z axis (meter)')
+            ax.set_zlabel('Distance (pc)')
+            ax.set_zticks(mass_values)
+            ax.set_zticklabels(axis_labels)
 
         # plot of 2D state
         else:
@@ -216,11 +228,21 @@ class State():
             for clump in self.clumps:
                 ax.scatter(clump.x, clump.y, s= np.pi * 1e5 * clump.R**2\
                            / self.boundary_box[1]**2, c='red')
-            plt.xlim(self.boundary_box)
-            plt.ylim(self.boundary_box)
 
-            ax.set_xlabel('x axis (meter)')
-            ax.set_ylabel('y axis (meter)')
+        # settings that apply for both 2D and 3D
+        ax.set_xlabel('Distance (pc)')
+        ax.set_ylabel('Distance (pc)')
+
+        ax.set_xticks(mass_values)
+        ax.set_xticklabels(axis_labels)
+        ax.set_yticks(mass_values)
+        ax.set_yticklabels(axis_labels)
+
+        ax.set_xlim(self.boundary_box)
+        ax.set_ylim(self.boundary_box)
+
+        ax.set_xlabel('Distance (pc)')
+        ax.set_ylabel('Distance (pc)')
         plt.grid()
         plt.show()
 
@@ -452,15 +474,41 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         x.append(clump.x)
         y.append(clump.y)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    ax1.grid()
+    fig, (ax_scat, ax_hist) = plt.subplots(1, 2)
+    ax_scat.grid()
     fig.set_size_inches(20, 10) # 10 inches wide and long
-    scat = ax1.scatter(x, y, facecolor = "red")
+    scat = ax_scat.scatter(x, y, facecolor = "red")
 
-    title1 = ax1.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                    transform=ax1.transAxes, ha="center")
+    title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                    transform=ax_scat.transAxes, ha="center")
 
-    def update1(frame):
+    # creating ticks on axis
+    amount_of_pc = int(state.boundary_box[1] / pc) * 2 + 1
+    max_amount_ticks = 21
+    factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+    amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+    middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
+    mass_values = []
+    axis_labels = []
+    for i in range(amount_of_ticks):
+        axis_labels.append((i - middle_tick) * factor_pc)
+        mass_values.append((i - middle_tick) * factor_pc * pc)
+
+    ax_scat.set_xlabel('Distance (pc)')
+    ax_scat.set_ylabel('Distance (pc)')
+
+    ax_scat.set_xticks(mass_values)
+    ax_scat.set_xticklabels(axis_labels)
+    ax_scat.set_yticks(mass_values)
+    ax_scat.set_yticklabels(axis_labels)
+
+    ax_scat.set_xlim(state.boundary_box)
+    ax_scat.set_ylim(state.boundary_box)
+
+    ax_scat.set_xlabel('Distance (pc)')
+    ax_scat.set_ylabel('Distance (pc)')
+
+    def update_scat(frame):
         if make_GIF and frame != 0:
             # information feedback to estimate duration of animation
             current_sec = int(time.time() - state.begin_time)
@@ -482,7 +530,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
 
         offsets = []
         sizes = []
-        title1.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
+        title_scat.set_text(u"{} / {} iterations - {} Myr".format(frame*step_size,\
                        niterations, round(state.time / Myr, 1)))
 
         # animate star
@@ -503,24 +551,19 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         if frame > 30:
             for _ in range(step_size):
                 state.Step()
-        return scat,title1,
+        return scat,title_scat,
 
-    myAnimation1 = FuncAnimation(fig, update1, frames = amount_of_frames + 30, \
+    myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames + 30, \
                                  interval = 10, repeat=False)
 
-    ax1.set_xlim(boundary_box[0], boundary_box[1])
-    ax1.set_ylim(boundary_box[0], boundary_box[1])
-    ax1.set_xlabel('Distance (meters)')
-    ax1.set_ylabel('Distance (meters)')
-
-    # RHS bar plot animation
-    title2 = ax1.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                    transform=ax1.transAxes, ha="center")
-
 #################################### histogram part #######################
+    # RHS bar plot animation
+    title_hist = ax_scat.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                    transform=ax_scat.transAxes, ha="center")
 
-    def update2(frame):
-        title2.set_text("Mass spectrum of clumps")
+
+    def update_hist(frame):
+        title_hist.set_text("Mass spectrum of clumps")
 
         # make a list with all masses of all clumps
         all_masses = []
@@ -534,16 +577,28 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
 
         # creating bins list
         bins = []
-        for i in range(len(mass_values) + 1):
+        for i in range(int(max(mass_values) / state.initial_clump_mass) + 1):
             bins.append(mass_values[0] * (i + 0.5))
 
-        ax2.hist(all_masses, bins=bins)
-        ax2.set_xticks(mass_values)
-        ax2.set_xticklabels(mass_values)
+        axis_labels = []
+        for mass_value in mass_values:
+            axis_labels.append(round(mass_value / state.initial_clump_mass))
 
-        return title2
+        print(bins)
+        print(axis_labels)
+        print(all_masses)
+        print()
 
-    myAnimation2 = FuncAnimation(fig, update2, frames=amount_of_frames+30, \
+        ax_hist.cla()
+        ax_hist.hist(all_masses, bins=bins)
+        ax_hist.set_xticks(mass_values)
+        ax_hist.set_xticklabels(axis_labels)
+        ax_hist.set_xlabel('Mass (initial clump mass)')
+        ax_hist.set_ylabel('Frequency')
+
+        return title_hist
+
+    myAnimation_hist = FuncAnimation(fig, update_hist, frames=amount_of_frames+30, \
                                  interval=100, repeat=False)
 
 ###################################################################
@@ -558,9 +613,9 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  10 * Myr # seconds, about the age of our solar system
+    time_frame =  20 * Myr # seconds, about the age of our solar system
     niterations = int(3000)
-    size_box = 20 * pc # diameter of orbit of pluto
+    size_box = 30 * pc # diameter of orbit of pluto
     toggle_3D = False
 
 
@@ -580,8 +635,11 @@ def set_up():
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     initial_clump_radius = Radius_clump(initial_clump_mass)
-    max_velocity_fraction = 1
-    curl_fraction = 1
+    max_velocity_fraction = 0.8
+    curl_fraction = 0.5
+
+    # units of data
+
 
     # choose one
     clump_distribution = "constant"
@@ -592,6 +650,7 @@ def set_up():
                   clump_distribution, max_velocity_fraction, curl_fraction, \
                   cloud_mass, initial_clump_mass)
     # state.Initiate_star(R_star, M_star, QH)
+    # state.Plot()
 
     # toggle force parameters
     # state.gravity_star_on = True
@@ -606,51 +665,6 @@ def set_up():
     animate_live = True
     animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
               size_box)
-
-def plot_3D():
-    """
-    This function contains all the input values. The user adjusts them.
-    """
-    # simulation settings
-    time_frame =  10 * Myr # seconds, about the age of our solar system
-    niterations = int(3000)
-    size_box = 20 * pc # diameter of orbit of pluto
-    toggle_3D = True
-
-
-    # animation settings
-    boundary_box = -size_box/2, size_box/2
-    amount_of_frames = int(300)
-    dt = time_frame / niterations # s
-
-    # star settings
-    # minimum visable radius is size_box / 1000
-    R_star = 1e17 # radius sun displayed in anmiation, not in scale
-    M_star = 1.989e30# mass sun in kg
-    QH = 1e45 # photon per second emitted
-
-    # clump settings
-    amount_clumps = 10
-    cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
-    initial_clump_mass = cloud_mass / amount_clumps
-    initial_clump_radius = Radius_clump(initial_clump_mass)
-    max_velocity_fraction = 1
-    curl_fraction = 1
-
-    # choose one
-    clump_distribution = "constant"
-    # clump_distribution = "power_law"
-
-    # initializing begin state
-    state = State(toggle_3D, amount_clumps, dt, boundary_box, initial_clump_radius, \
-                  clump_distribution, max_velocity_fraction, curl_fraction, \
-                  cloud_mass, initial_clump_mass)
-    # state.Initiate_star(R_star, M_star, QH)
-
-    state.gravity_clumps_on = True
-
-    state.Plot()
-
 
 if __name__ == "__main__":
     # plot_3D()
