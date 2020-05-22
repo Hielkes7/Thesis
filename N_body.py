@@ -371,7 +371,7 @@ class State():
         """
         # the merge factor states how much two clumps have to overlap before
         # they merge
-        merge_factor = 0.4
+        merge_factor = 0.6
         if dr < merge_factor * (clump1.R + clump2.R):
 
             # find centre of mass
@@ -452,7 +452,8 @@ def Mass_clump(radius):
     mass = 12590 * mass_sun * (radius/pc)**2.35
     return mass
 
-def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size_box):
+def animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
+              size_box, animate_hist):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -474,9 +475,14 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         x.append(clump.x)
         y.append(clump.y)
 
-    fig, (ax_scat, ax_hist) = plt.subplots(1, 2)
+    if animate_hist:
+        fig, (ax_scat, ax_hist) = plt.subplots(1, 2)
+        fig.set_size_inches(17.6, 8) # inches wide and long
+    else:
+        fig, ax_scat = plt.subplots(1, 1)
+        fig.set_size_inches(10, 10) # 10 inches wide and long
+
     ax_scat.grid()
-    fig.set_size_inches(17.6, 8) # 10 inches wide and long
     scat = ax_scat.scatter(x, y, facecolor = "red")
 
     title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
@@ -556,54 +562,52 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
     myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames + 30, \
                                  interval = 10, repeat=False)
 
-############################# histogram part #######################
-    # RHS bar plot animation
-    title_hist = ax_scat.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
-                    transform=ax_scat.transAxes, ha="center")
+    # the histogram part
+    if animate_hist:
+        title_hist = ax_scat.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                        transform=ax_scat.transAxes, ha="center")
 
 
-    def update_hist(frame):
-        title_hist.set_text("Mass spectrum of clumps")
+        def update_hist(frame):
+            title_hist.set_text("Mass spectrum of clumps")
 
-        # make a list with all masses of all clumps
-        all_masses = []
-        for clump in state.clumps:
-            all_masses.append(clump.m)
+            # make a list with all masses of all clumps
+            all_masses = []
+            for clump in state.clumps:
+                all_masses.append(clump.m)
 
-        # we want no more than 30 ticks
-        axis_ticks = []
-        size_ticks = int(state.amount_clumps / 21) + 1
-        amount_of_ticks = int(state.amount_clumps / size_ticks)
-        for i in range(amount_of_ticks + 1):
-            axis_ticks.append(i * size_ticks)
+            # we want no more than 30 ticks
+            axis_ticks = []
+            size_ticks = int(state.amount_clumps / 21) + 1
+            amount_of_ticks = int(state.amount_clumps / size_ticks)
+            for i in range(amount_of_ticks + 1):
+                axis_ticks.append(i * size_ticks)
 
-        # creating bins list
-        bins = []
-        for i in range(state.amount_clumps + 1):
-            bins.append(state.initial_clump_mass * (i + 0.5))
+            # creating bins list
+            bins = []
+            for i in range(state.amount_clumps + 1):
+                bins.append(state.initial_clump_mass * (i + 0.5))
 
-        mass_values = []
-        axis_labels = []
-        amount_ticks_x_axis = 10
-        size_ticks = state.amount_clumps / amount_ticks_x_axis
-        for i in range(1, amount_ticks_x_axis + 1):
-            mass_values.append(state.initial_clump_mass * i * size_ticks)
-            axis_labels.append(int(i * size_ticks))
+            mass_values = []
+            axis_labels = []
+            amount_ticks_x_axis = 10
+            size_ticks = state.amount_clumps / amount_ticks_x_axis
+            for i in range(1, amount_ticks_x_axis + 1):
+                mass_values.append(state.initial_clump_mass * i * size_ticks)
+                axis_labels.append(int(i * size_ticks))
 
-        ax_hist.cla()
-        ax_hist.hist(all_masses, bins=bins)
-        ax_hist.set_xticks(mass_values)
-        ax_hist.set_yticks(axis_ticks)
-        ax_hist.set_xticklabels(axis_labels)
-        ax_hist.set_xlabel('Mass (initial clump mass)')
-        ax_hist.set_ylabel('Frequency')
+            ax_hist.cla()
+            ax_hist.hist(all_masses, bins=bins)
+            ax_hist.set_xticks(mass_values)
+            ax_hist.set_yticks(axis_ticks)
+            ax_hist.set_xticklabels(axis_labels)
+            ax_hist.set_xlabel('Mass (initial clump mass)')
+            ax_hist.set_ylabel('Frequency')
 
-        return title_hist
+            return title_hist
 
-    myAnimation_hist = FuncAnimation(fig, update_hist, frames=amount_of_frames+30, \
-                                 interval=10, repeat=False)
-
-###################################################################
+        myAnimation_hist = FuncAnimation(fig, update_hist, frames=amount_of_frames+30, \
+                                     interval=1000, repeat=False)
 
     if animate_live:
         plt.show()
@@ -615,15 +619,15 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  20 * Myr # seconds, about the age of our solar system
-    niterations = int(3000)
+    time_frame =  40 * Myr # seconds, about the age of our solar system
+    niterations = int(12000)
     size_box = 30 * pc # diameter of orbit of pluto
     toggle_3D = False
 
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
-    amount_of_frames = int(300)
+    amount_of_frames = int(1200)
     dt = time_frame / niterations # s
 
     # star settings
@@ -633,7 +637,7 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 60
+    amount_clumps = 150
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     initial_clump_radius = Radius_clump(initial_clump_mass)
@@ -655,18 +659,19 @@ def set_up():
     # state.Plot()
 
     # toggle force parameters
-    # state.gravity_star_on = True
+    state.gravity_star_on = False
     state.gravity_clumps_on = True
-    # state.radiation_pressure_on = True
-    # state.gas_pressure_on = True
-    # TODO state.clump_evaportation_on = True
-    # TODO state.stellar_wind_on = True
+    state.radiation_pressure_on = False
+    state.gas_pressure_on = False
+    state.clump_evaportation_on = False # TODO
+    state.stellar_wind_on = False # TODO
 
     # Choose either one, they can't both be True
     make_GIF = False # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
     animate_live = True
+    animate_hist = False
     animation(animate_live, make_GIF, state, amount_of_frames, niterations, \
-              size_box)
+              size_box, animate_hist)
 
 if __name__ == "__main__":
     # plot_3D()
