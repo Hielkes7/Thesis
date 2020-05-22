@@ -476,7 +476,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
 
     fig, (ax_scat, ax_hist) = plt.subplots(1, 2)
     ax_scat.grid()
-    fig.set_size_inches(20, 10) # 10 inches wide and long
+    fig.set_size_inches(17.6, 8) # 10 inches wide and long
     scat = ax_scat.scatter(x, y, facecolor = "red")
 
     title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
@@ -556,7 +556,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
     myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames + 30, \
                                  interval = 10, repeat=False)
 
-#################################### histogram part #######################
+############################# histogram part #######################
     # RHS bar plot animation
     title_hist = ax_scat.text(1.75, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
                     transform=ax_scat.transAxes, ha="center")
@@ -570,23 +570,30 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         for clump in state.clumps:
             all_masses.append(clump.m)
 
-        counted_masses = sorted(collections.Counter(all_masses).items())
-        mass_num = [i[0] for i in counted_masses]
-        mass_values = [i[0] for i in counted_masses]
-        freq_masses = [i[1] for i in counted_masses]
+        # we want no more than 30 ticks
+        axis_ticks = []
+        size_ticks = int(state.amount_clumps / 21) + 1
+        amount_of_ticks = int(state.amount_clumps / size_ticks)
+        for i in range(amount_of_ticks + 1):
+            axis_ticks.append(i * size_ticks)
 
         # creating bins list
         bins = []
-        for i in range(int(max(mass_values) / state.initial_clump_mass) + 1):
-            bins.append(mass_values[0] * (i + 0.5))
+        for i in range(state.amount_clumps + 1):
+            bins.append(state.initial_clump_mass * (i + 0.5))
 
+        mass_values = []
         axis_labels = []
-        for mass_value in mass_values:
-            axis_labels.append(round(mass_value / state.initial_clump_mass))
+        amount_ticks_x_axis = 10
+        size_ticks = state.amount_clumps / amount_ticks_x_axis
+        for i in range(1, amount_ticks_x_axis + 1):
+            mass_values.append(state.initial_clump_mass * i * size_ticks)
+            axis_labels.append(int(i * size_ticks))
 
         ax_hist.cla()
         ax_hist.hist(all_masses, bins=bins)
         ax_hist.set_xticks(mass_values)
+        ax_hist.set_yticks(axis_ticks)
         ax_hist.set_xticklabels(axis_labels)
         ax_hist.set_xlabel('Mass (initial clump mass)')
         ax_hist.set_ylabel('Frequency')
@@ -594,7 +601,7 @@ def animation(animate_live, make_GIF, state, amount_of_frames, niterations, size
         return title_hist
 
     myAnimation_hist = FuncAnimation(fig, update_hist, frames=amount_of_frames+30, \
-                                 interval=100, repeat=False)
+                                 interval=10, repeat=False)
 
 ###################################################################
 
@@ -626,12 +633,12 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 30
+    amount_clumps = 60
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     initial_clump_radius = Radius_clump(initial_clump_mass)
     max_velocity_fraction = 0.8
-    curl_fraction = 0.5
+    curl_fraction = 0.6
 
     # units of data
 
