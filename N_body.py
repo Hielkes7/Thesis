@@ -38,6 +38,7 @@ class State():
         self.CM = None
         self.toggle_3D = toggle_3D
         self.initial_clump_mass = initial_clump_mass
+        self.collision_data = []
 
         # toggle variables, they get toggled on somewhere else
         self.gravity_star_on = False
@@ -161,6 +162,26 @@ class State():
             self.Radiation_pressure()
         if self.gas_pressure_on:
             self.Gas_pressure()
+
+        # Find new CM of the cloud
+        # CM_x = (x1 * m1 + x2 + m2) / (m1 + m2) = numerator / denominator
+        numerator_x = 0
+        numerator_y = 0
+        numerator_z = 0
+        denominator = 0
+        if self.star:
+            numerator_x += self.star.x * self.star.m
+            numerator_y += self.star.y * self.star.m
+            numerator_z += self.star.z * self.star.m
+            denominator += self.star.m
+        for clump in self.clumps:
+            numerator_x += clump.x * clump.m
+            numerator_y += clump.y * clump.m
+            numerator_z += clump.z * clump.m
+            denominator += clump.m
+        self.CM[0] = numerator_x / denominator
+        self.CM[1] = numerator_y / denominator
+        self.CM[2] = numerator_z / denominator
 
         # calculate new positions for each clump
         for clump in self.clumps:
@@ -374,6 +395,22 @@ class State():
         merge_factor = 0.6
         if dr < merge_factor * (clump1.R + clump2.R):
 
+            # impact velocity
+            abs_velocity1 = np.sqrt(clump1.vx**2 + clump1.vy**2 + clump1.vz**2)
+            abs_velocity2 = np.sqrt(clump2.vx**2 + clump2.vy**2 + clump2.vz**2)
+            product_abs_velocity = abs_velocity1 * abs_velocity2
+
+            inproduct_vectors = clump1.vx * clump2.vx + \
+                                clump1.vy * clump2.vy + \
+                                clump1.vz * clump2.vz
+
+            # angle between the velocity vectors
+            theta = np.arccos(inproduct_vectors / product_abs_velocity)
+            impact_velocity1 = abs_velocity1 * np.sin(theta)
+            impact_velocity2 = abs_velocity2 * np.sin(theta)
+            tot_impact_velocity = impact_velocity1 + impact_velocity2
+
+
             # find centre of mass
             clump1.x = (clump1.x *clump1.m + clump2.x * clump2.m)\
                           / (clump1.m + clump2.m)
@@ -390,10 +427,28 @@ class State():
             clump1.vz = (clump1.vz *clump1.m + clump2.vz * clump2.m)\
                            / (clump1.m + clump2.m)
 
+            # distance from the collision to the CM of the cloud
+            CM_x = self.CM[0]
+            CM_y = self.CM[1]
+            CM_z = self.CM[2]
+            distance = np.sqrt((CM_x - clump1.x)**2 + \
+                               (CM_y - clump1.y)**2 + \
+                               (CM_z - clump1.z)**2)
+
+            # saving collision data
+            collision = {
+               "impact_velocity": tot_impact_velocity,
+               "time": self.time,
+               "clump_masses": [clump1.m, clump2.m],
+               "distance_to_CM": distance
+            }
+            self.collision_data.append(collision)
+
             clump1.m = clump1.m + clump2.m
             clump1.R = Radius_clump(clump1.m)
             self.clumps.remove(clump2)
             return True
+
         return False
 
     def __str__(self):
@@ -452,8 +507,8 @@ def Mass_clump(radius):
     mass = 12590 * mass_sun * (radius/pc)**2.35
     return mass
 
-def animation(make_GIF, state, amount_of_frames, niterations, \
-              size_box, animate_hist, animate_scat, hist_axis_fixed):
+def animation(make_GIF, state, amount_of_frames, niterations, size_box,\
+              animate_hist, animate_scat, hist_axis_fixed):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -567,7 +622,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, \
             return scat, title_scat,
 
         myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames, \
-                                     interval = 10, repeat=False)
+                                     interval = 1000, repeat=False)
 
     # the histogram part
     if animate_hist:
@@ -610,7 +665,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, \
             ax_hist.set_xticklabels(axis_labels)
             ax_hist.set_xlabel('Mass (initial clump mass)')
             ax_hist.set_ylabel('Frequency')
-            plt.title("Mass spectrum after %d iterations" %((frame+1) * step_size))
+            plt.title("Mass spectrum after %d iterations" %(frame * step_size))
 
             # each frame has "step_size" iterations done
             if not animate_scat:
@@ -620,7 +675,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, \
 
         myAnimation_hist = FuncAnimation(fig, update_hist, \
                            frames=amount_of_frames, \
-                           interval=10, repeat=False)
+                           interval=1000, repeat=False)
 
     if make_GIF:
         myAnimation.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
@@ -632,11 +687,10 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  40 * Myr # seconds, about the age of our solar system
+    time_frame =  20 * Myr # seconds, about the age of our solar system
     niterations = int(12000)
-    size_box = 30 * pc # diameter of orbit of pluto
+    size_box = 13 * pc # diameter of orbit of pluto
     toggle_3D = False
-
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
@@ -650,12 +704,12 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
-    amount_clumps = 30
+    amount_clumps = 150
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     initial_clump_radius = Radius_clump(initial_clump_mass)
-    max_velocity_fraction = 0.8
-    curl_fraction = 0.6
+    max_velocity_fraction = 0.9
+    curl_fraction = 0.7
 
     # choose one
     clump_distribution = "constant"
@@ -679,9 +733,9 @@ def set_up():
 
     # Choose either one, they can't both be True
     make_GIF = False # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
-    animate_scat = False
+    animate_scat = True
     animate_hist = True
-    hist_axis_fixed = True
+    hist_axis_fixed = False
     animation(make_GIF, state, amount_of_frames, \
               niterations, size_box, animate_hist, animate_scat, \
               hist_axis_fixed)
