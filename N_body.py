@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import time
 import collections
 from matplotlib.animation import FuncAnimation
+from all_data_clumps import data_clumps
 
 # Some constants
 AU = 1.49597871e11 # meters in an Astronomical Unit
@@ -25,9 +26,7 @@ class State():
     This class is the current state of a set up involving a sun and x amount
     of clumps.
     """
-    def __init__(self, toggle_3D, amount_clumps, dt, boundary_box, \
-                 initial_clump_radius, clump_distribution, max_velocity_fraction, \
-                 curl_fraction, cloud_mass, initial_clump_mass):
+    def __init__(self, toggle_3D, amount_clumps, dt, boundary_box,clump_distribution, max_velocity_fraction, curl_fraction, cloud_mass, initial_clump_mass, use_Sams_data, random_movement_fraction):
         self.amount_clumps = amount_clumps
         self.clumps = []
         self.boundary_box = boundary_box
@@ -54,51 +53,77 @@ class State():
             self.power_law_clump_distribution = True
 
         # initiate all positions of the clumps
-        # random.seed(0)
-        for _ in range(self.amount_clumps):
-            r_max = boundary_box[1] * 0.8
-            if self.constant_clump_distribution:
-                r = random.random() * r_max
-            if self.power_law_clump_distribution:
-                r = 1/ random.random()**2 * r_max / 100
+        random.seed(24352354)
+        if use_Sams_data:
+            for clump_name in data_clumps:
 
-            # direction position according to physics standard. phi is angle
-            # with the x-axis and [0,2pi], theta is angle with z-axis [0,pi]
-            phi = random.random() * 2 * np.pi
-            if self.toggle_3D:
-                theta = random.random() * np.pi
-            else:
-                theta = 0.5 * np.pi
+                # place first clump as starter
+                m = data_clumps[clump_name]['mass'] * mass_sun
+                R = data_clumps[clump_name]['radius'] * pc
+                d = data_clumps[clump_name]['distance'] * pc
 
-            x = r * np.sin(theta) * np.cos(phi) # m
-            y = r * np.sin(theta) * np.sin(phi) # m
-            z = r * np.cos(theta)
+                # find angle which puts the CM closest to (0,0,0)
+                shortest_distance_to_origin = 9e99 # dummy large number
+                for phi in np.arange(0, 2*np.pi, 0.1):
+                    theta = 0.5 * np.pi # TODO, make 3D, right now z=0
+                    x = d * np.sin(theta) * np.cos(phi) # m
+                    y = d * np.sin(theta) * np.sin(phi) # m
+                    z = d * np.cos(theta)
+                    clump = Object(x, y, z, 0, 0, 0, m, R)
+                    self.clumps.append(clump)
 
-            # the initial velocity will be calculated later on in the code
-            vx = 0
-            vy = 0
-            vz = 0
+                    # determine CM and its distance to (0,0,0)
+                    self.Find_CM()
+                    distance_to_origin = np.sqrt(self.CM[0]**2 +\
+                                                 self.CM[1]**2 +\
+                                                 self.CM[2]**2)
 
-            R = initial_clump_radius # m
-            m = Mass_clump(R)
-            clump = Object(x, y, z, vx, vy, vz, m, R)
-            self.clumps.append(clump)
+                    if distance_to_origin < shortest_distance_to_origin:
+                        shortest_distance_to_origin = distance_to_origin
+                        best_phi = phi
 
-        # determine centre of mass (probably close to 0,0)
-        x_sum = 0
-        y_sum = 0
-        z_sum = 0
-        mass_sum = 0
-        for clump in self.clumps:
-            mass_sum += clump.m
-            x_sum += clump.m * clump.x
-            y_sum += clump.m * clump.y
-            z_sum += clump.m * clump.z
+                    # delete temporary location to possibly find better one
+                    self.clumps.remove(clump)
 
-        x_CM = x_sum / mass_sum
-        y_CM = y_sum / mass_sum
-        z_CM = z_sum / mass_sum
-        self.CM = [x_CM, y_CM, z_CM]
+                # add best location clump
+                x = d * np.sin(theta) * np.cos(best_phi) # m
+                y = d * np.sin(theta) * np.sin(best_phi) # m
+                z = d * np.cos(theta)
+                clump = Object(x, y, z, 0, 0, 0, m, R)
+                self.clumps.append(clump)
+
+        else:
+            for _ in range(self.amount_clumps):
+                d_max = boundary_box[1] * 0.8
+                if self.constant_clump_distribution:
+                    d = random.random() * d_max
+                if self.power_law_clump_distribution:
+                    d = 1/ random.random()**2 * d_max / 100
+
+                # direction position according to physics standard. phi is angle
+                # with the x-axis and [0,2pi], theta is angle with z-axis [0,pi]
+                phi = random.random() * 2 * np.pi
+                if self.toggle_3D:
+                    theta = random.random() * np.pi
+                else:
+                    theta = 0.5 * np.pi
+
+                x = d * np.sin(theta) * np.cos(phi) # m
+                y = d * np.sin(theta) * np.sin(phi) # m
+                z = d * np.cos(theta)
+
+                # the initial velocity will be calculated later on in the code
+                vx = 0
+                vy = 0
+                vz = 0
+
+                m = initial_clump_mass
+                R = self.Radius_clump(m)
+                clump = Object(x, y, z, vx, vy, vz, m, R)
+                self.clumps.append(clump)
+
+            # determine centre of mass (probably close to 0,0)
+            self.Find_CM()
 
         # initiate all starting velocities of the clumps
         for clump in self.clumps:
@@ -129,10 +154,9 @@ class State():
 
             # initial velocity is combination of chosen and random velocity
             # with a ratio set by the variable "curl_fraction"
-            clump.vx = curl_fraction * vx_curl + (1 - curl_fraction) * vx_random
-            clump.vy = curl_fraction * vy_curl + (1 - curl_fraction) * vy_random
+            clump.vx = curl_fraction * vx_curl + random_movement_fraction * vx_random
+            clump.vy = curl_fraction * vy_curl + random_movement_fraction * vy_random
             clump.vz = vz_random
-
 
     def Initiate_star(self, R_star, M_star, QH):
         """
@@ -163,25 +187,8 @@ class State():
         if self.gas_pressure_on:
             self.Gas_pressure()
 
-        # Find new CM of the cloud
-        # CM_x = (x1 * m1 + x2 + m2) / (m1 + m2) = numerator / denominator
-        numerator_x = 0
-        numerator_y = 0
-        numerator_z = 0
-        denominator = 0
-        if self.star:
-            numerator_x += self.star.x * self.star.m
-            numerator_y += self.star.y * self.star.m
-            numerator_z += self.star.z * self.star.m
-            denominator += self.star.m
-        for clump in self.clumps:
-            numerator_x += clump.x * clump.m
-            numerator_y += clump.y * clump.m
-            numerator_z += clump.z * clump.m
-            denominator += clump.m
-        self.CM[0] = numerator_x / denominator
-        self.CM[1] = numerator_y / denominator
-        self.CM[2] = numerator_z / denominator
+        # determine new CM of cloud
+        self.Find_CM()
 
         # calculate new positions for each clump
         for clump in self.clumps:
@@ -365,7 +372,7 @@ class State():
         sum_mass = 0
         for other_clump in self.clumps:
             distance2 = np.sqrt((other_clump.x - self.CM[0])**2 + \
-                                (other_clump.y - self.CM[1])**2 +
+                                (other_clump.y - self.CM[1])**2 + \
                                 (other_clump.z - self.CM[2])**2)
             if distance2 < distance1:
                 sum_mass += other_clump.m
@@ -445,11 +452,63 @@ class State():
             self.collision_data.append(collision)
 
             clump1.m = clump1.m + clump2.m
-            clump1.R = Radius_clump(clump1.m)
+            clump1.R = self.Radius_clump(clump1.m)
             self.clumps.remove(clump2)
             return True
 
         return False
+
+    def Find_CM(self):
+        """
+        This function finds the centre of mass of the cloud
+        """
+        # CM_x = (x1 * m1 + x2 + m2) / (m1 + m2) = numerator / denominator
+        numerator_x = 0
+        numerator_y = 0
+        numerator_z = 0
+        denominator = 0
+        if self.star:
+            numerator_x += self.star.x * self.star.m
+            numerator_y += self.star.y * self.star.m
+            numerator_z += self.star.z * self.star.m
+            denominator += self.star.m
+        for clump in self.clumps:
+            numerator_x += clump.x * clump.m
+            numerator_y += clump.y * clump.m
+            numerator_z += clump.z * clump.m
+            denominator += clump.m
+        if self.star or self.clumps:
+            self.CM = [numerator_x / denominator, \
+                       numerator_y / denominator, \
+                       numerator_z / denominator]
+            return True
+
+    def Radius_clump(self, mass):
+        """
+        This function calculates the radius of clumps depending on their mass.
+        I derived this formula of excisting data of mass/radius ratios. See
+        the file "radius_mass_ratio_clumps.pdf" on my github:
+        https://github.com/Hielkes7/Thesis
+
+        R = (M**0.426)/55.55
+        R in pc and M in solar masses
+        """
+        radius = pc / 55.55 * (mass/mass_sun)**0.426
+        return radius
+
+    def Mass_clump(self, radius):
+        """
+        This function calculates the mass of clumps depending on their radius.
+        I derived this formula of excisting data of mass/radius ratios. See
+        the file "radius_mass_ratio_clumps.pdf" on my github:
+        https://github.com/Hielkes7/Thesis
+
+        M = 12590 * R**2.35
+        M in solar masses and R in pc
+        """
+        mass = 12590 * mass_sun * (radius/pc)**2.35
+        return mass
+
 
     def __str__(self):
         if toggle_3D:
@@ -481,34 +540,8 @@ class Object():
       return f"A clump of mass {self.m} and radius \
              {self.R} at position ({self.x}, {self.y})"
 
-def Radius_clump(mass):
-    """
-    This function calculates the radius of clumps depending on their mass.
-    I derived this formula of excisting data of mass/radius ratios. See
-    the file "radius_mass_ratio_clumps.pdf" on my github:
-    https://github.com/Hielkes7/Thesis
 
-    R = (M**0.426)/55.55
-    R in pc and M in solar masses
-    """
-    radius = pc / 55.55 * (mass/mass_sun)**0.426
-    return radius
-
-def Mass_clump(radius):
-    """
-    This function calculates the mass of clumps depending on their radius.
-    I derived this formula of excisting data of mass/radius ratios. See
-    the file "radius_mass_ratio_clumps.pdf" on my github:
-    https://github.com/Hielkes7/Thesis
-
-    M = 12590 * R**2.35
-    M in solar masses and R in pc
-    """
-    mass = 12590 * mass_sun * (radius/pc)**2.35
-    return mass
-
-def animation(make_GIF, state, amount_of_frames, niterations, size_box,\
-              animate_hist, animate_scat, hist_axis_fixed):
+def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_hist, animate_scat, hist_axis_fixed, animate_CM):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -616,13 +649,31 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box,\
             scat.set_offsets(offsets)
             scat.set_sizes(sizes)
 
+            # centre of mass
+            if animate_CM:
+                scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], facecolor = "blue")
+
+            print("particles: %d / %d" %(len(state.clumps), state.amount_clumps))
+
             # each frame has "step_size" iterations done
             for _ in range(step_size):
                 state.Step()
-            return scat, title_scat,
+            if animate_CM:
+                return scat, title_scat, scat_CM
+            else:
+                return scat, title_scat
 
-        myAnimation_scat = FuncAnimation(fig, update_scat, frames = amount_of_frames, \
-                                     interval = 1000, repeat=False)
+        # blit=True makes it run alot faster but the title gets removed
+        if not make_GIF:
+            myAnimation_scat = FuncAnimation(fig, update_scat, \
+                               frames = amount_of_frames, \
+                               interval = 10, repeat=False,
+                               blit=True)
+        else:
+            myAnimation_scat = FuncAnimation(fig, update_scat, \
+                               frames = amount_of_frames, \
+                               interval = 10, repeat=False,
+                               blit=False)
 
     # the histogram part
     if animate_hist:
@@ -673,12 +724,21 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box,\
                     state.Step()
             return title_hist,
 
-        myAnimation_hist = FuncAnimation(fig, update_hist, \
-                           frames=amount_of_frames, \
-                           interval=1000, repeat=False)
+        # blit=True makes it run alot faster but the title gets removed
+        if not make_GIF:
+            myAnimation_hist = FuncAnimation(fig, update_hist, \
+                               frames=amount_of_frames, \
+                               interval=10, repeat=False, blit=True)
+        else:
+            myAnimation_hist = FuncAnimation(fig, update_hist, \
+                               frames=amount_of_frames, \
+                               interval=10, repeat=False, blit=True)
 
     if make_GIF:
-        myAnimation.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
+        if animate_scat:
+            myAnimation_scat.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
+        if animate_hist:
+            myAnimation_hist.save('RENAME_THIS_GIF.gif', writer='imagemagick', fps=30)
     else:
         plt.show()
 
@@ -687,14 +747,15 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
+    # TODO make the niterations dependent on time_frame
     time_frame =  20 * Myr # seconds, about the age of our solar system
-    niterations = int(12000)
+    niterations = int(500 * time_frame / Myr)
     size_box = 13 * pc # diameter of orbit of pluto
     toggle_3D = False
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
-    amount_of_frames = int(1200)
+    amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
 
     # star settings
@@ -704,12 +765,13 @@ def set_up():
     QH = 1e45 # photon per second emitted
 
     # clump settings
+    use_Sams_data = False
     amount_clumps = 150
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
-    initial_clump_radius = Radius_clump(initial_clump_mass)
-    max_velocity_fraction = 0.9
-    curl_fraction = 0.7
+    max_velocity_fraction = 0.8
+    curl_fraction = 1
+    random_movement_fraction = 1
 
     # choose one
     clump_distribution = "constant"
@@ -717,9 +779,9 @@ def set_up():
 
     # initializing begin state
     state = State(toggle_3D, amount_clumps, dt, boundary_box, \
-                  initial_clump_radius, clump_distribution, \
+                  clump_distribution, \
                   max_velocity_fraction, curl_fraction, cloud_mass, \
-                  initial_clump_mass)
+                  initial_clump_mass, use_Sams_data, random_movement_fraction)
     # state.Initiate_star(R_star, M_star, QH)
     # state.Plot()
 
@@ -734,11 +796,12 @@ def set_up():
     # Choose either one, they can't both be True
     make_GIF = False # you can only make GIF's on anaconda prompt after installing FFmpeg: conda install -c menpo ffmpeg
     animate_scat = True
-    animate_hist = True
+    animate_hist = False
     hist_axis_fixed = False
+    animate_CM = True
     animation(make_GIF, state, amount_of_frames, \
               niterations, size_box, animate_hist, animate_scat, \
-              hist_axis_fixed)
+              hist_axis_fixed, animate_CM)
 
 if __name__ == "__main__":
     # plot_3D()
