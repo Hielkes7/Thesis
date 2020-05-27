@@ -18,7 +18,12 @@ kyr = 3.1556926e10 # sec in a kilo year
 Myr = 3.1556926e13 # sec in a Mega year
 Gyr = 3.1556926e16 # sec in a Giga year
 mass_sun = 1.989e30 # kg
+R_sun = 6.9634e8 # meters
 G = 6.67408e-11 # m^3 kg^-1 s^-2, the gravitational constant
+u = 1.660539e-27 # kg, atomic mass unit
+
+# some numbers to get a better feeling for the situation
+mass_density_clump = 2.877e-16 # kg/m^3 (clump of M= 3400 * M_sun)
 
 
 class State():
@@ -158,11 +163,10 @@ class State():
             clump.vy = curl_fraction * vy_curl + random_movement_fraction * vy_random
             clump.vz = vz_random
 
-    def Initiate_star(self, R_star, M_star, QH):
+    def Initiate_star(self, R_star, M_star):
         """
         This function initializes a star in the middle of the 2D plot
         """
-        self.QH = QH # amount of ionizing photons
         x, y, z, vx, vy, vz = 0, 0, 0, 0, 0, 0
         star = Object(x, y, z, vx, vy, vz, M_star, R_star)
         self.star = star
@@ -172,6 +176,9 @@ class State():
         This function executes one timestep of length dt using Eulers method.
         """
         # reset accelerations of clumps from previous iterations
+        self.star.ax = 0
+        self.star.ay = 0
+        self.star.az = 0
         for clump in self.clumps:
             clump.ax = 0
             clump.ay = 0
@@ -189,6 +196,15 @@ class State():
 
         # determine new CM of cloud
         self.Find_CM()
+
+        # calcualte new position of star (TODO, keep everyting relative to the star and have it always at (0,0,0))
+        self.star.vx += self.star.ax * self.dt
+        self.star.vy += self.star.ay * self.dt
+        self.star.vz += self.star.az * self.dt
+
+        self.star.x += self.star.vx * self.dt
+        self.star.y += self.star.vy * self.dt
+        self.star.z += self.star.vz * self.dt
 
         # calculate new positions for each clump
         for clump in self.clumps:
@@ -323,17 +339,16 @@ class State():
 
         for clump in self.clumps:
             dr, dx, dy, dz = self.Distance(clump, self.star)
+            if not self.Collision(self.star, clump, dr):
+                a_clump = G * self.star.m / dr**2
+                clump.ax += a_clump * dx / dr
+                clump.ay += a_clump * dy / dr
+                clump.az += a_clump * dz / dr
 
-            # absorption of clump by star
-            if dr < self.star.R + clump.R:
-                self.clumps.remove(clump)
-
-            # if no absorption, calculate acceleration due to gravity
-            else:
-                a = G * self.star.m / dr**2
-                clump.ax += a * dx / dr
-                clump.ay += a * dy / dr
-                clump.az += a * dz / dr
+                a_star = G * clump.m / dr**2
+                self.star.ax += -a_star * dx / dr
+                self.star.ay += -a_star * dy / dr
+                self.star.az += -a_star * dz / dr
 
     def Gravity_clumps(self):
         """
@@ -509,7 +524,6 @@ class State():
         mass = 12590 * mass_sun * (radius/pc)**2.35
         return mass
 
-
     def __str__(self):
         if toggle_3D:
             return f"{self.amount_clumps} clumps in a {self.boundary_box[1]}x\
@@ -539,7 +553,6 @@ class Object():
     def __str__(self):
       return f"A clump of mass {self.m} and radius \
              {self.R} at position ({self.x}, {self.y})"
-
 
 def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_hist, animate_scat, hist_axis_fixed, animate_CM):
     """
@@ -637,10 +650,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
 
             # animate star
             if state.star:
-                offsets.append([state.star.x, state.star.y])
-                sizes.append(1.24e6 * state.star.R**2 * size_box**(-2))
-                # 1.24e6 is determined by just trying and it works for having 10
-                # inch plot dimensions
+                scat_star = ax_scat.scatter(state.star.x, state.star.y, facecolor = "blue")
 
             # animate clumps
             for clump in state.clumps:
@@ -651,15 +661,17 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
 
             # centre of mass
             if animate_CM:
-                scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], facecolor = "blue")
+                scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], facecolor = "green")
 
             print("particles: %d / %d" %(len(state.clumps), state.amount_clumps))
+            print("Time: %.2f Myr" %round(state.time / Myr, 2))
+            print()
 
             # each frame has "step_size" iterations done
             for _ in range(step_size):
                 state.Step()
             if animate_CM:
-                return scat, title_scat, scat_CM
+                return scat, title_scat, scat_CM, scat_star
             else:
                 return scat, title_scat
 
@@ -673,7 +685,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
             myAnimation_scat = FuncAnimation(fig, update_scat, \
                                frames = amount_of_frames, \
                                interval = 10, repeat=False,
-                               blit=False)
+                               blit=True)
 
     # the histogram part
     if animate_hist:
@@ -750,7 +762,7 @@ def set_up():
     # TODO make the niterations dependent on time_frame
     time_frame =  20 * Myr # seconds, about the age of our solar system
     niterations = int(500 * time_frame / Myr)
-    size_box = 13 * pc # diameter of orbit of pluto
+    size_box = 20 * pc # diameter of orbit of pluto
     toggle_3D = False
 
     # animation settings
@@ -760,8 +772,8 @@ def set_up():
 
     # star settings
     # minimum visable radius is size_box / 1000
-    R_star = 2e17 # radius sun displayed in anmiation, not in scale
-    M_star = 1.989e30# mass sun in kg
+    R_star = 40 * R_sun # radius sun displayed in anmiation, not in scale
+    M_star = 35 * mass_sun
     QH = 1e45 # photon per second emitted
 
     # clump settings
@@ -782,11 +794,11 @@ def set_up():
                   clump_distribution, \
                   max_velocity_fraction, curl_fraction, cloud_mass, \
                   initial_clump_mass, use_Sams_data, random_movement_fraction)
-    # state.Initiate_star(R_star, M_star, QH)
+    state.Initiate_star(R_star, M_star)
     # state.Plot()
 
     # toggle force parameters
-    state.gravity_star_on = False
+    state.gravity_star_on = True
     state.gravity_clumps_on = True
     state.radiation_pressure_on = False
     state.gas_pressure_on = False
@@ -804,5 +816,4 @@ def set_up():
               hist_axis_fixed, animate_CM)
 
 if __name__ == "__main__":
-    # plot_3D()
     set_up()
