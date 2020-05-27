@@ -240,11 +240,11 @@ class State():
         factor_pc = int(amount_of_pc / max_amount_ticks) + 1
         amount_of_ticks = int(amount_of_pc / factor_pc) + 1
         middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
-        mass_values = []
+        distance_values = []
         axis_labels = []
         for i in range(amount_of_ticks):
             axis_labels.append((i - middle_tick) * factor_pc)
-            mass_values.append((i - middle_tick) * factor_pc * pc)
+            distance_values.append((i - middle_tick) * factor_pc * pc)
 
         # if the simulation is in 3D
         if self.toggle_3D:
@@ -260,7 +260,7 @@ class State():
 
             ax.set_zlim(self.boundary_box)
             ax.set_zlabel('Distance (pc)')
-            ax.set_zticks(mass_values)
+            ax.set_zticks(distance_values)
             ax.set_zticklabels(axis_labels)
 
         # plot of 2D state
@@ -277,9 +277,9 @@ class State():
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
 
-        ax.set_xticks(mass_values)
+        ax.set_xticks(distance_values)
         ax.set_xticklabels(axis_labels)
-        ax.set_yticks(mass_values)
+        ax.set_yticks(distance_values)
         ax.set_yticklabels(axis_labels)
 
         ax.set_xlim(self.boundary_box)
@@ -554,7 +554,7 @@ class Object():
       return f"A clump of mass {self.m} and radius \
              {self.R} at position ({self.x}, {self.y})"
 
-def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_hist, animate_scat, hist_axis_fixed, animate_CM):
+def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_hist, animate_scat, hist_axis_fixed, animate_CM, animate_HII_region, file_name):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -591,8 +591,20 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
         fig.set_size_inches(10, 10) # 10 inches wide and long
 
     if animate_scat:
-        ax_scat.grid()
-        scat = ax_scat.scatter(x, y, facecolor = "red")
+        ax_scat.grid(True)
+
+        # animate HII-region
+        if animate_HII_region:
+            back_ground_gas = ax_scat.scatter(0, 0, s=1.24e6, \
+                              label = "Background gas", facecolor = "lightsalmon")
+
+            # radius_HII = get_HII_radius
+
+            HII_region = ax_scat.scatter(state.star.x, state.star.y, \
+                         s=1.24e5, \
+                         label = "HII region", facecolor = "white")
+
+        scat = ax_scat.scatter(x, y, label = "Gas clumps", facecolor = "red")
 
         title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
                         transform=ax_scat.transAxes, ha="center")
@@ -603,25 +615,22 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
         factor_pc = int(amount_of_pc / max_amount_ticks) + 1
         amount_of_ticks = int(amount_of_pc / factor_pc) + 1
         middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
-        mass_values = []
+        distance_values = []
         axis_labels = []
         for i in range(amount_of_ticks):
             axis_labels.append((i - middle_tick) * factor_pc)
-            mass_values.append((i - middle_tick) * factor_pc * pc)
+            distance_values.append((i - middle_tick) * factor_pc * pc)
 
         ax_scat.set_xlabel('Distance (pc)')
         ax_scat.set_ylabel('Distance (pc)')
 
-        ax_scat.set_xticks(mass_values)
+        ax_scat.set_xticks(distance_values)
         ax_scat.set_xticklabels(axis_labels)
-        ax_scat.set_yticks(mass_values)
+        ax_scat.set_yticks(distance_values)
         ax_scat.set_yticklabels(axis_labels)
 
         ax_scat.set_xlim(state.boundary_box)
         ax_scat.set_ylim(state.boundary_box)
-
-        ax_scat.set_xlabel('Distance (pc)')
-        ax_scat.set_ylabel('Distance (pc)')
 
         def update_scat(frame):
             if make_GIF and frame != 0:
@@ -650,7 +659,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
 
             # animate star
             if state.star:
-                scat_star = ax_scat.scatter(state.star.x, state.star.y, facecolor = "blue")
+                scat_star = ax_scat.scatter(state.star.x, state.star.y, label = "Star", facecolor = "blue")
 
             # animate clumps
             for clump in state.clumps:
@@ -661,7 +670,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
 
             # centre of mass
             if animate_CM:
-                scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], facecolor = "green")
+                scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], label = "Centre of Mass", facecolor = "green")
 
             print("particles: %d / %d" %(len(state.clumps), state.amount_clumps))
             print("Time: %.2f Myr" %round(state.time / Myr, 2))
@@ -671,9 +680,9 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
             for _ in range(step_size):
                 state.Step()
             if animate_CM:
-                return scat, title_scat, scat_CM, scat_star
+                return back_ground_gas, HII_region, scat, title_scat, scat_CM, scat_star
             else:
-                return scat, title_scat
+                return back_ground_gas, HII_region, scat, title_scat
 
         # blit=True makes it run alot faster but the title gets removed
         if not make_GIF:
@@ -759,7 +768,6 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    # TODO make the niterations dependent on time_frame
     time_frame =  20 * Myr # seconds, about the age of our solar system
     niterations = int(500 * time_frame / Myr)
     size_box = 20 * pc # diameter of orbit of pluto
@@ -769,6 +777,8 @@ def set_up():
     boundary_box = -size_box/2, size_box/2
     amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
+    animate_HII_region = True
+    file_name = "n0=1000, rmax=10pc, cool_off, grav_off, T0=10"
 
     # star settings
     # minimum visable radius is size_box / 1000
@@ -813,7 +823,7 @@ def set_up():
     animate_CM = True
     animation(make_GIF, state, amount_of_frames, \
               niterations, size_box, animate_hist, animate_scat, \
-              hist_axis_fixed, animate_CM)
+              hist_axis_fixed, animate_CM, animate_HII_region, file_name)
 
 if __name__ == "__main__":
     set_up()
