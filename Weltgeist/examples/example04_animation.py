@@ -85,6 +85,8 @@ def animation():
         line = ax.plot([],[], lw=2, color=colors[index])[0]
         lines.append(line)
 
+    
+
     def init():
         for line in lines:
             line.set_data([],[])

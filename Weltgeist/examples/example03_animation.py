@@ -64,6 +64,20 @@ def animation():
         line = ax.plot([],[], lw=2, color=colors[index])[0]
         lines.append(line)
 
+    # creating TICKS for x axis
+    amount_of_pc = int(rmax / pc) + 1
+    max_amount_ticks = 10
+    factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+    amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+    distance_values = []
+    axis_labels = []
+    for i in range(amount_of_ticks):
+        axis_labels.append(round(i * factor_pc / 100)) # the actual values displayed
+        distance_values.append(i * factor_pc * pc) # the location of placement on axis
+
+    ax.set_xticks(distance_values)
+    ax.set_xticklabels(axis_labels)
+
     def init():
         for line in lines:
             line.set_data([],[])
@@ -110,12 +124,12 @@ def animation():
         for lnum,line in enumerate(lines):
             line.set_data(xlist[lnum], ylist[lnum])
 
-        return lines#, title
+        return lines
 
     FuncAnimation(fig, animate, init_func=init, interval=10, blit=True)
-    # plt.title("Particle density, nH, per radius")
-    plt.xlabel("particle density ($cm_{-3}$)")
-    plt.ylabel("Temperature")
+    plt.title("Particle density, nH, per radius")
+    plt.xlabel("Radius / pc")
+    plt.ylabel("$n_{H}$ / cm$^{-3}$")
     plt.show()
 
 
