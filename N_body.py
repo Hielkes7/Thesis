@@ -6,6 +6,8 @@ import time
 import collections
 from matplotlib.animation import FuncAnimation
 from all_data_clumps import data_clumps
+import pandas as pd
+
 
 # Some constants
 AU = 1.49597871e11 # meters in an Astronomical Unit
@@ -255,7 +257,7 @@ class State():
                            self.star.R**2 / self.boundary_box[1]**2, c='red')
             for clump in self.clumps:
                 ax.scatter(clump.x, clump.y, clump.z, s= np.pi * 1e5 * clump.R**2\
-                           / self.boundary_box[1]**2, c='red')
+                           / self.boundary_box[1]**2, c='blue')
 
 
             ax.set_zlim(self.boundary_box)
@@ -271,7 +273,7 @@ class State():
                            self.star.R**2 / self.boundary_box[1]**2, c='red')
             for clump in self.clumps:
                 ax.scatter(clump.x, clump.y, s= np.pi * 1e5 * clump.R**2\
-                           / self.boundary_box[1]**2, c='red')
+                           / self.boundary_box[1]**2, c='blue')
 
         # settings that apply for both 2D and 3D
         ax.set_xlabel('Distance (pc)')
@@ -554,6 +556,29 @@ class Object():
       return f"A clump of mass {self.m} and radius \
              {self.R} at position ({self.x}, {self.y})"
 
+def get_HII_radii(file_name):
+    """
+    This function return a dictionary of the HII radii from a file
+    """
+    file = pd.read_excel(r'C:\Users\Hiele\Documents\School\Jaar 5 UvA 2019-20\Scriptie\Thesis\Thesis\measurements/' + file_name + '   compressed.xlsx')
+
+    radii = pd.DataFrame(file, columns= ['Radius edge (m)']).values
+    time = pd.DataFrame(file, columns= ['Time (s)']).values
+
+    radii_edge = {}
+    for i in range(len(radii)):
+        radii_edge[time[i][0]] = radii[i][0]
+    return radii_edge
+
+def get_HII_radius(dict_HII_radii, time_simulation):
+    """
+    This function returns the HII radius corresponding to the current time.
+    """
+    for time_data in dict_HII_radii:
+        if time_data > time_simulation:
+            return int(dict_HII_radii[time_data])
+
+
 def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_hist, animate_scat, hist_axis_fixed, animate_CM, animate_HII_region, file_name):
     """
     This function animates evolution of the set up. There is an option for live
@@ -593,19 +618,19 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
     if animate_scat:
         ax_scat.grid(True)
 
-        # animate HII-region
         if animate_HII_region:
+            # put in background color representing background gas
             back_ground_gas = ax_scat.scatter(0, 0, s=1.24e6, \
                               label = "Background gas", facecolor = "lightsalmon")
 
-            # radius_HII = get_HII_radius
+            # import the data about HII radii obtained by Sam his Weltgeist code.
+            dict_HII_radii = get_HII_radii(file_name)
 
-            HII_region = ax_scat.scatter(state.star.x, state.star.y, \
-                         s=1.24e5, \
-                         label = "HII region", facecolor = "white")
+        # create scatter template
+        scat = ax_scat.scatter(x, y, label = "Gas clumps", facecolor = "blue")
+        # HII_region = ax_scat.scatter(x, y, label = "HII region", facecolor = "white")
 
-        scat = ax_scat.scatter(x, y, label = "Gas clumps", facecolor = "red")
-
+        # create title template
         title_scat = ax_scat.text(0.5, 1.02, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
                         transform=ax_scat.transAxes, ha="center")
 
@@ -633,6 +658,14 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
         ax_scat.set_ylim(state.boundary_box)
 
         def update_scat(frame):
+            if animate_HII_region:
+                HII_radius = get_HII_radius(dict_HII_radii, state.time)
+                HII_region = ax_scat.scatter(state.star.x, state.star.y, \
+                             s=1.24e6 * HII_radius**2 * size_box**(-2), \
+                             label = "HII region", facecolor = "#ffffff")
+                # HII_region.set_offsets([state.star.x, state.star.y])
+                # HII_region.set_sizes([1.24e5])
+
             if make_GIF and frame != 0:
                 # information feedback to estimate duration of animation
                 current_sec = int(time.time() - state.begin_time)
@@ -659,7 +692,7 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
 
             # animate star
             if state.star:
-                scat_star = ax_scat.scatter(state.star.x, state.star.y, label = "Star", facecolor = "blue")
+                scat_star = ax_scat.scatter(state.star.x, state.star.y, label = "Star", facecolor = "red")
 
             # animate clumps
             for clump in state.clumps:
@@ -679,16 +712,24 @@ def animation(make_GIF, state, amount_of_frames, niterations, size_box, animate_
             # each frame has "step_size" iterations done
             for _ in range(step_size):
                 state.Step()
+
+            return_list = []
+            if animate_HII_region:
+                return_list.append(back_ground_gas)
+                return_list.append(HII_region)
             if animate_CM:
-                return back_ground_gas, HII_region, scat, title_scat, scat_CM, scat_star
-            else:
-                return back_ground_gas, HII_region, scat, title_scat
+                return_list.append(scat_CM)
+            return_list.append(scat_star)
+            return_list.append(scat)
+            return_list.append(title_scat)
+
+            return return_list
 
         # blit=True makes it run alot faster but the title gets removed
         if not make_GIF:
             myAnimation_scat = FuncAnimation(fig, update_scat, \
                                frames = amount_of_frames, \
-                               interval = 10, repeat=False,
+                               interval = 1000, repeat=True,
                                blit=True)
         else:
             myAnimation_scat = FuncAnimation(fig, update_scat, \
@@ -778,7 +819,7 @@ def set_up():
     amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
     animate_HII_region = True
-    file_name = "n0=1000, rmax=10pc, cool_off, grav_off, T0=10"
+    file_name = "n0=1000, rmax=30pc, cool_off, grav_off, T0=10"
 
     # star settings
     # minimum visable radius is size_box / 1000
@@ -792,7 +833,7 @@ def set_up():
     cloud_mass = 3400 * mass_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     max_velocity_fraction = 0.8
-    curl_fraction = 1
+    curl_fraction = 0.8
     random_movement_fraction = 1
 
     # choose one
@@ -820,7 +861,7 @@ def set_up():
     animate_scat = True
     animate_hist = False
     hist_axis_fixed = False
-    animate_CM = True
+    animate_CM = False
     animation(make_GIF, state, amount_of_frames, \
               niterations, size_box, animate_hist, animate_scat, \
               hist_axis_fixed, animate_CM, animate_HII_region, file_name)
