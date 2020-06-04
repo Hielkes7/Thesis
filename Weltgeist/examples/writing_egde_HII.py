@@ -33,12 +33,12 @@ u = 1.660539e-27 # kg, atomic mass unit
 def write_xlsx(cooling_on, gravity_on, file_name):
 
     # setting up all the data
-    ncells = 256
+    ncells = 512
     niterations = 10000
-    step_iterations = 10
-    n0 = 1000.0 # cm^-3
-    rmax = 10.0 * wunits.pc * 2 # 20 pc box (times 2 because we want to move the edge)
-    ymax = 5e3 # height of plot/animation
+    step_iterations = 1
+    n0 = 100.0 # cm^-3
+    rmax = 15 * wunits.pc # 20 pc box (times 2 because we want to move the edge)
+    ymax = 5e2 # height of plot/animation
     T0 = 10.0 # K
     gamma = 5.0/3.0 # monatomic gas (close enough...)
     QH = 1e49 # photons per second emitted, roughly a 35 solar mass star
@@ -60,19 +60,13 @@ def write_xlsx(cooling_on, gravity_on, file_name):
     # create excel file
     file = "data/" + file_name + ".xlsx"
     workbook = xlsxwriter.Workbook(file)
+    workbook = xlsxwriter.Workbook('data/HII region expansion.xlsx')
     sheet = workbook.add_worksheet()
 
-    # widen all columns to make the text clearer
-    for i in range(int(niterations/step_iterations) + 1):
+    # change width of all cells to make it more readable
+    x = hydro.x[:ncells]
+    for i in range(len(x) + 1):
         sheet.set_column(0, i, 15)
-
-    # create titels in first row
-    sheet.write(0, 0, "Iterations")
-    sheet.write(0, 1, "Time (s)")
-    sheet.write(0, 2, "Time (Myr)")
-    sheet.write(0, 3, "Radius edge (m)")
-    sheet.write(0, 4, "Radius edge (pc)")
-
 
     # start of the animation part
     fig = plt.figure()
@@ -84,12 +78,26 @@ def write_xlsx(cooling_on, gravity_on, file_name):
         line = ax.plot([],[], lw=2, color=colors[index])[0]
         lines.append(line)
 
+    # creating TICKS for x axis
+    amount_of_pc = int(rmax / pc) + 1
+    max_amount_ticks = 10
+    factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+    amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+    distance_values = []
+    axis_labels = []
+    for i in range(amount_of_ticks):
+        axis_labels.append(round(i * factor_pc / 100)) # the actual values displayed
+        distance_values.append(i * factor_pc * pc) # the location of placement on axis
+
+    ax.set_xticks(distance_values)
+    ax.set_xticklabels(axis_labels)
+
     def init():
         for line in lines:
             line.set_data([],[])
         return lines
 
-    def animate(frame):
+    def animate(step):
         for _ in range(step_iterations):
             integrator.Step()
 
@@ -102,56 +110,62 @@ def write_xlsx(cooling_on, gravity_on, file_name):
         nanalytic[np.where(x <= ri)] = ni
         nH_analytic = nanalytic[:ncells]
 
-        xlist = [x, x]
-        ylist = [nH, nH_analytic]
-
-        # Find peak
-        nH_peak = nH[0]
-        x_peak = x[0]
-        i_peak = 0
+        # find front edge of expansion HII region
+        x_edge = None # create variable in case "i_edge" isn't found yet
         for i in range(len(nH)):
-            if nH[i] > nH_peak:
-                nH_peak = nH[i]
-                x_peak = x[i]
-                i_peak = i
-
-        # find first point, left of peak, which is lower than n0
-        for i in range(i_peak, 0, -1):
-            if nH[i] < n0:
-                i_edge = i
-                x_edge = x[i]
+            # start looping bakcwards (right to left)
+            if round(nH[len(nH) - i - 1]) != round(n0):
+                i_edge = len(nH) - i - 1
+                x_edge = x[i_edge]
                 break
 
-        # write data to excel file
-        if x_edge < 0.75 * rmax:
-            sheet.write(frame + 1, 0, frame * step_iterations)
-            sheet.write(frame + 1, 1, time)
-            sheet.write(frame + 1, 2, round(int(time) / Myr, 1))
-            sheet.write(frame + 1, 3, x_edge/100)
-            sheet.write(frame + 1, 4, round(x_edge/100/pc, 1))
+        # stop saving data when the border of the box is almost reached
+        if x_edge:
+            if x_edge > 0.95 * rmax:
+                print("File closed")
+                workbook.close()
+                exit()
 
-            print(file_name, ": ", frame * step_iterations, " iterations")
+        # create titels in first row
+        sheet.write(step * 4 + 1, 0, "Time (s)")
+        sheet.write(step * 4 + 1, 1, integrator.time)
+
+        sheet.write(step * 4 + 1, 3, "Time (Myr)")
+        sheet.write(step * 4 + 1, 4, integrator.time / Myr)
+
+        sheet.write(step * 4 + 2, 0, "Radius (m)")
+        for i in range(len(x)):
+            sheet.write(step * 4 + 2, i + 1, x[i])
+
+        sheet.write(step * 4 + 3, 0, "Density (cm^-3)")
+        for i in range(len(nH)):
+            sheet.write(step * 4 + 3, i + 1, nH[i])
+
+        if x_edge:
+            print(file_name, ": ", step * step_iterations, " iterations")
             print("time: %.2f Myr" %(int(time) / Myr))
             print("x_edge: %.2f pc" %(round(x_edge/pc/100, 2)))
             print()
 
-        if x_edge > 0.75 * rmax:
-            workbook.close()
+        xlist = [x, x]
+        ylist = [nH, nH_analytic]
 
         for lnum,line in enumerate(lines):
             line.set_data(xlist[lnum], ylist[lnum])
+
+        for _ in range(step_iterations):
+            integrator.Step()
 
         return lines
 
     FuncAnimation(fig, animate, init_func=init, interval=10, blit=True)
     # plt.title("Particle density, nH, per radius")
-    plt.xlabel("particle density ($cm_{-3}$)")
+    plt.xlabel("Distance (pc)")
     plt.ylabel("Temperature")
     plt.show()
 
-    workbook.close()
 
 if __name__ == "__main__":
     write_xlsx(cooling_on = False,
                gravity_on = False,
-               file_name = "n0=1000, rmax=10pc, cool_off, grav_off, T0=10")
+               file_name = "HII region expansion")
