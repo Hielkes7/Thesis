@@ -221,6 +221,15 @@ class State():
                 if current_radius < HII_radius:
                     self.current_density_profile[size_cell * i] = 0
                 else:
+                    # if this is the shell containing the HII region
+                    previous_radius = size_cell * (i - 1)
+                    if previous_radius < HII_radius:
+                        mass_swept_up_gas = 4 / 3 * np.pi * previous_radius**3 * self.n0 * m_H
+                        Volume_HII_region = 4 / 3 * np.pi * (current_radius**3 - previous_radius**3)
+                        HII_region_density = mass_swept_up_gas / Volume_HII_region
+                        n_HII = HII_region_density / m_H
+                        self.current_density_profile[size_cell * i] = n_HII
+
                     self.current_density_profile[size_cell * i] = self.n0
 
         # when using the actual weltgeist data
