@@ -54,9 +54,14 @@ class State():
         self.background_gas = False
         self.weltgeist_data = None
         self.use_weltgeist_dummy_data = True
-        self.current_density_profile = None
+        self.current_nH_profile = None
+        self.current_T_profile = None
         self.HII_radius = None
         self.n0 = None # standard particle density background gas
+        self.T0 = None
+        self.T_max = None
+        self.size_cell = None
+        self.ncells = None
 
         # toggle variables, they get toggled on somewhere else
         self.gravity_star_on = False
@@ -213,31 +218,30 @@ class State():
         """
         # when using dummy data for the particle density
         if self.use_weltgeist_dummy_data:
-            HII_radius = 0.65 * pc / Myr * self.time # the HII region has a radius of 6.5pc after 10 Myr
-            size_cell = 15 * pc / 512
-            self.current_density_profile = {}
-            for i in range(512):
-                current_radius = size_cell * i
-                if current_radius < HII_radius:
-                    self.current_density_profile[size_cell * i] = 0
+            self.Get_HII_radius()
+            self.current_nH_profile = {}
+            for i in range(self.ncells):
+                current_radius = self.size_cell * i
+                if current_radius < self.HII_radius:
+                    self.current_nH_profile[self.size_cell * i] = 0
                 else:
                     # if this is the shell containing the HII region
-                    previous_radius = size_cell * (i - 1)
-                    if previous_radius < HII_radius:
+                    previous_radius = self.size_cell * (i - 1)
+                    if previous_radius < self.HII_radius:
                         mass_swept_up_gas = 4 / 3 * np.pi * previous_radius**3 * self.n0 * m_H
                         Volume_HII_region = 4 / 3 * np.pi * (current_radius**3 - previous_radius**3)
                         HII_region_density = mass_swept_up_gas / Volume_HII_region
                         n_HII = HII_region_density / m_H
-                        self.current_density_profile[size_cell * i] = n_HII
+                        self.current_nH_profile[self.size_cell * i] = n_HII
 
-                    self.current_density_profile[size_cell * i] = self.n0
+                    self.current_nH_profile[self.size_cell * i] = self.n0
 
         # when using the actual weltgeist data
         else:
             remove_keys = []
             for time_weltgeist in self.weltgeist_data:
                 if time_weltgeist > self.time:
-                    self.current_density_profile = self.weltgeist_data[time_weltgeist]
+                    self.current_nH_profile = self.weltgeist_data[time_weltgeist]
                     break
                 remove_keys.append(time_weltgeist)
 
@@ -245,6 +249,24 @@ class State():
             # this prevents unnecessary looping over a lot of data, decreasing runtime
             for remove_key in remove_keys:
                 del self.weltgeist_data[remove_key]
+
+    def Get_T_profile(self):
+        """
+        This function get the current density profile of the background gas.
+        """
+        # when using dummy data for the particle density
+        if self.use_weltgeist_dummy_data:
+            self.Get_HII_radius()
+            self.current_T_profile = {}
+            for i in range(self.ncells):
+                current_radius = self.size_cell * i
+                if current_radius < self.HII_radius:
+                    self.current_T_profile[self.size_cell * i] = self.T_max
+                else:
+                    self.current_T_profile[self.size_cell * i] = self.T0
+
+        # TODO make this function work for the actual weltgeist code
+        pass # I put pass here to make the #TODO above part of the function
 
     def Get_HII_radius(self):
         """
@@ -259,8 +281,8 @@ class State():
         # when using the actual Weltgeist data
         else:
             highest_nH = 0
-            for x in self.current_density_profile:
-                nH = self.current_density_profile[x]
+            for x in self.current_nH_profile:
+                nH = self.current_nH_profile[x]
                 if nH > highest_nH:
                     highest_nH = nH
                     highest_x = x
@@ -281,6 +303,7 @@ class State():
 
         # update new particle density (nH) profile for this time step
         self.Get_nH_profile()
+        self.Get_T_profile()
 
         # determine new CM of cloud
         self.Find_CM()
@@ -442,11 +465,11 @@ class State():
         """
         mass_sum = 0
         R_previous= 0
-        for R_current in self.current_density_profile:
+        for R_current in self.current_nH_profile:
             if R_current > R:
                 break
             V_shell = 4 / 3 * np.pi * (R_current**3 - R_previous**3)
-            m_shell = self.current_density_profile[R_current] * m_H * V_shell
+            m_shell = self.current_nH_profile[R_current] * m_H * V_shell
             mass_sum += m_shell
             R_previous = R_current
 
@@ -1226,10 +1249,15 @@ def set_up():
     curl_fraction = 0.8
     random_movement_fraction = 1
 
-    # background gas settings
+    # BGG settings
     n0 = 1e8 # m^-3, standard particle density of the background gas_pressure_on
+    T0 = 10 # K, the dummy temperature outside the bubble
+    T_max = 8400 # K, the dummy temperature inside the bubble
+    ncells = 512
+    size_cell = size_box / ncells / 3
     import_weltgeist_data = False # if this is False, the program will use dummy data
     animate_HII = True
+
 
     # choose one
     clump_distribution = "constant"
@@ -1264,12 +1292,17 @@ def set_up():
                   use_Sams_data, \
                   random_movement_fraction)
     state.n0 = n0
+    state.T0 = T0
+    state.T_max = T_max
+    state.size_cell = size_cell
+    state.ncells = ncells
+
+
     if init_star:
         state.Initiate_star(R_star, M_star)
     if import_weltgeist_data:
         state.use_weltgeist_dummy_data = False
         state.Import_weltgeist_data(weltgeist_data_file)
-
 
     # toggle force parameters
     state.gravity_star_on = False
