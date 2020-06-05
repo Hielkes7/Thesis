@@ -47,6 +47,7 @@ class State():
         self.dt = dt
         self.begin_time = time.time()
         self.star = None
+        self.QH = None
         self.CM = None
         self.toggle_3D = toggle_3D
         self.initial_clump_mass = initial_clump_mass
@@ -56,6 +57,7 @@ class State():
         self.use_weltgeist_dummy_data = True
         self.current_nH_profile = None
         self.current_T_profile = None
+        self.current_photon_profile = None
         self.HII_radius = None
         self.n0 = None # standard particle density background gas
         self.T0 = None
@@ -266,7 +268,29 @@ class State():
                     self.current_T_profile[self.size_cell * i] = self.T0
 
         # TODO make this function work for the actual weltgeist code
-        pass # I put pass here to make the #TODO above part of the function
+        # I put pass here to make the #TODO above part of the function
+        pass
+
+    def Get_photon_profile(self):
+        """
+        This function get the current profile of the amount of photons reaching
+        a certain radius of the box.
+        """
+        # when using dummy data for the particle density
+        if self.use_weltgeist_dummy_data:
+            self.Get_HII_radius()
+            self.current_photon_profile = {}
+            for i in range(self.ncells):
+                current_radius = self.size_cell * i
+                if current_radius < self.HII_radius:
+                    recombination = self.Get_recombination(current_radius)
+                    self.current_photon_profile[self.size_cell * i] = self.QH - recombination
+                else:
+                    self.current_photon_profile[self.size_cell * i] = 0
+
+        # TODO make this function work for the actual weltgeist code
+        # I put pass here to make the #TODO above part of the function
+        pass
 
     def Get_HII_radius(self):
         """
@@ -288,6 +312,15 @@ class State():
                     highest_x = x
             self.HII_radius = highest_x
 
+    def Get_recombination(self, radius):
+        """
+        This function calculates the amount of photons absorbed by recombining
+        hydrogen atoms.
+        """
+        # when using dummy data for the particle density
+        if self.use_weltgeist_dummy_data:
+            return self.QH * (radius / self.HII_radius)**2
+
     def Step(self):
         """
         This function executes one timestep of length dt using Eulers method.
@@ -304,6 +337,7 @@ class State():
         # update new particle density (nH) profile for this time step
         self.Get_nH_profile()
         self.Get_T_profile()
+        self.Get_photon_profile()
 
         # determine new CM of cloud
         self.Find_CM()
@@ -1254,7 +1288,7 @@ def set_up():
     T0 = 10 # K, the dummy temperature outside the bubble
     T_max = 8400 # K, the dummy temperature inside the bubble
     ncells = 512
-    size_cell = size_box / ncells / 3
+    size_cell = size_box / ncells
     import_weltgeist_data = False # if this is False, the program will use dummy data
     animate_HII = True
 
@@ -1296,6 +1330,24 @@ def set_up():
     state.T_max = T_max
     state.size_cell = size_cell
     state.ncells = ncells
+    state.QH = QH
+
+
+    fig = plt.figure()
+    fig.set_size_inches(10, 10) # 10 inches wide and long
+    ax = fig.add_subplot(111)
+
+    # # test to see if the recombination profile looks alright
+    # for i in range(1000):
+    #     print(i)
+    #     state.Step()
+    # radii = []
+    # photons = []
+    # for radius in state.current_photon_profile:
+    #     radii.append(radius)
+    #     photons.append(state.current_photon_profile[radius])
+    # plt.plot(radii, photons)
+    # plt.show()
 
 
     if init_star:
