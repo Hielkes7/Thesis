@@ -199,19 +199,30 @@ class State():
         file = pd.read_excel(r'C:\Users\Hiele\Documents\School\Jaar 5 UvA 2019-20\Scriptie\Thesis\Thesis\measurements\HII_region_Weltgeist_data/' + weltgeist_data_file + '.xlsx')
 
         self.weltgeist_data = {}
-        niterations = int((len(pd.DataFrame(file).values) + 1) / 4)
+        niterations = int((len(pd.DataFrame(file).values) + 1) / 6)
         for i in range(niterations):
-            time = pd.DataFrame(file).values[i * 4][1]
-            x = pd.DataFrame(file).values[i * 4 + 1]
-            nH = pd.DataFrame(file).values[i * 4 + 2]
-            densities = {}
-            for i in range(1, len(x) - 1):
-                densities[x[i] / 100] = nH[i] * 1e6
+            time = pd.DataFrame(file).values[i * 6][1]
+            x = pd.DataFrame(file).values[i * 6 + 1]
+            nH = pd.DataFrame(file).values[i * 6 + 2]
+            T = pd.DataFrame(file).values[i * 6 + 3]
+            photons = pd.DataFrame(file).values[i * 6 + 4]
+            current_nH_profile = {}
+            current_T_profile = {}
+            current_photon_profile = {}
+            for n in range(1, len(x) - 1):
+                current_nH_profile[x[n] / 100] = nH[n] * 1e6 # converted from cm to m
+                current_T_profile[x[n] / 100] = T[n]  # converted from cm to m
+                current_photon_profile[x[n] / 100] = photons[n] # converted from cm to m
 
-            self.weltgeist_data[time] = densities
+            self.weltgeist_data[time] = {"nH": current_nH_profile,
+                                         "T": current_T_profile,
+                                         "photon": current_photon_profile
+                                        }
 
         # retrieve first HII radius value
         self.Get_nH_profile()
+        self.Get_T_profile()
+        self.Get_photon_profile()
         self.Get_HII_radius()
 
     def Get_nH_profile(self):
@@ -243,12 +254,12 @@ class State():
             remove_keys = []
             for time_weltgeist in self.weltgeist_data:
                 if time_weltgeist > self.time:
-                    self.current_nH_profile = self.weltgeist_data[time_weltgeist]
+                    self.current_nH_profile = self.weltgeist_data[time_weltgeist]["nH"]
                     break
                 remove_keys.append(time_weltgeist)
 
-            # remove radii with a corresponding time less than the current time
-            # this prevents unnecessary looping over a lot of data, decreasing runtime
+            # remove data with a corresponding time less than the current time
+            # this prevents unnecessary looping
             for remove_key in remove_keys:
                 del self.weltgeist_data[remove_key]
 
@@ -267,9 +278,19 @@ class State():
                 else:
                     self.current_T_profile[self.size_cell * i] = self.T0
 
-        # TODO make this function work for the actual weltgeist code
-        # I put pass here to make the #TODO above part of the function
-        pass
+        # when using the actual weltgeist data
+        else:
+            remove_keys = []
+            for time_weltgeist in self.weltgeist_data:
+                if time_weltgeist > self.time:
+                    self.current_T_profile = self.weltgeist_data[time_weltgeist]["T"]
+                    break
+                remove_keys.append(time_weltgeist)
+
+            # remove data with a corresponding time less than the current time
+            # this prevents unnecessary looping
+            for remove_key in remove_keys:
+                del self.weltgeist_data[remove_key]
 
     def Get_photon_profile(self):
         """
@@ -288,9 +309,19 @@ class State():
                 else:
                     self.current_photon_profile[self.size_cell * i] = 0
 
-        # TODO make this function work for the actual weltgeist code
-        # I put pass here to make the #TODO above part of the function
-        pass
+        # when using the actual weltgeist data
+        else:
+            remove_keys = []
+            for time_weltgeist in self.weltgeist_data:
+                if time_weltgeist > self.time:
+                    self.current_photon_profile = self.weltgeist_data[time_weltgeist]["photon"]
+                    break
+                remove_keys.append(time_weltgeist)
+
+            # remove data with a corresponding time less than the current time
+            # this prevents unnecessary looping
+            for remove_key in remove_keys:
+                del self.weltgeist_data[remove_key]
 
     def Get_HII_radius(self):
         """
@@ -300,7 +331,7 @@ class State():
         # when using dummy data to safe time. Often to test functions
         if self.use_weltgeist_dummy_data:
             # print("test")
-            self.HII_radius = 0.65 * pc / Myr * self.time # the HII region has a radius of 6.5pc after 10 Myr
+            self.HII_radius = 8 * pc / Myr * self.time # the HII region has a radius of 6.5pc after 10 Myr
 
         # when using the actual Weltgeist data
         else:
@@ -1257,14 +1288,14 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  5 * Myr # time frame in 10^6 years
-    niterations = 1000
+    time_frame =  2 * Myr # time frame in 10^6 years
+    niterations = 2000
     size_box = 13 * pc # diameter of orbit of pluto
     toggle_3D = True
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
-    amount_of_frames = 100
+    amount_of_frames = niterations / 10
     dt = time_frame / niterations # s
     weltgeist_data_file = "HII region expansion"
 
@@ -1332,24 +1363,6 @@ def set_up():
     state.ncells = ncells
     state.QH = QH
 
-
-    fig = plt.figure()
-    fig.set_size_inches(10, 10) # 10 inches wide and long
-    ax = fig.add_subplot(111)
-
-    # # test to see if the recombination profile looks alright
-    # for i in range(1000):
-    #     print(i)
-    #     state.Step()
-    # radii = []
-    # photons = []
-    # for radius in state.current_photon_profile:
-    #     radii.append(radius)
-    #     photons.append(state.current_photon_profile[radius])
-    # plt.plot(radii, photons)
-    # plt.show()
-
-
     if init_star:
         state.Initiate_star(R_star, M_star)
     if import_weltgeist_data:
@@ -1365,6 +1378,62 @@ def set_up():
     state.stellar_wind_on = False # TODO
     state.radiation_pressure_on = False # TODO
     state.gas_pressure_on = False # TODO
+
+
+    # test to see if the recombination profile looks alright
+    for i in range(1000): # should be at 1 Myr
+        print(i)
+        state.Step()
+    print("Time: %d s, %.2f Myr" %(state.time, state.time / Myr))
+
+
+
+    radii = []
+    photons = []
+    for radius in state.current_photon_profile:
+        radii.append(radius)
+        photons.append(state.current_photon_profile[radius])
+
+    fig = plt.figure()
+    fig.set_size_inches(10, 10) # 10 inches wide and long
+    ax = fig.add_subplot(111)
+    plt.plot(radii, photons)
+
+    plt.xlabel("Radius (pc)")
+    plt.ylabel("Number of photons")
+    plt.title("Photons left after being absorbed by background gas")
+    plt.show()
+
+
+    temp = []
+    for radius in state.current_photon_profile:
+        temp.append(state.current_T_profile[radius])
+
+    fig = plt.figure()
+    fig.set_size_inches(10, 10) # 10 inches wide and long
+    ax = fig.add_subplot(111)
+    plt.plot(radii, temp)
+
+    plt.xlabel("Radius (pc)")
+    plt.ylabel("Temperature (K)")
+    plt.title("Temperature per radius after %.2f Myr" %(state.time / Myr))
+    plt.show()
+
+
+    nH = []
+    for radius in state.current_photon_profile:
+        nH.append(state.current_nH_profile[radius])
+
+    fig = plt.figure()
+    fig.set_size_inches(10, 10) # 10 inches wide and long
+    ax = fig.add_subplot(111)
+    plt.plot(radii, nH)
+
+    plt.xlabel("Radius (pc)")
+    plt.ylabel("Density (m^-3)")
+    plt.title("Hydrogen particle density per radius after %.2f Myr" %(state.time / Myr))
+    plt.show()
+
 
     if niterations < amount_of_frames:
         raise Exception("Amount_of_frames is higher than niterations")
