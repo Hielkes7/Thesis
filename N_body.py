@@ -911,8 +911,7 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
     # blit=True makes it run alot faster but the title gets removed
     myAnimation_scat = FuncAnimation(fig, update_scat, \
                        frames = amount_of_frames, \
-                       interval = 10, repeat=True,
-                       blit=True)
+                       interval = 10, repeat=True, blit=True)
     plt.show()
 
 def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scatter, animate_3D_scatter, save_collision_distance_to_CM_spectrum, save_mass_spectrum, save_number_density, save_impact_velocity, save_impact_angle_hist, save_impact_angle_vs_distance, animate_HII):
@@ -1295,7 +1294,7 @@ def set_up():
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
-    amount_of_frames = niterations / 10
+    amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
     weltgeist_data_file = "HII region expansion"
 
@@ -1378,62 +1377,6 @@ def set_up():
     state.stellar_wind_on = False # TODO
     state.radiation_pressure_on = False # TODO
     state.gas_pressure_on = False # TODO
-
-
-    # test to see if the recombination profile looks alright
-    for i in range(1000): # should be at 1 Myr
-        print(i)
-        state.Step()
-    print("Time: %d s, %.2f Myr" %(state.time, state.time / Myr))
-
-
-
-    radii = []
-    photons = []
-    for radius in state.current_photon_profile:
-        radii.append(radius)
-        photons.append(state.current_photon_profile[radius])
-
-    fig = plt.figure()
-    fig.set_size_inches(10, 10) # 10 inches wide and long
-    ax = fig.add_subplot(111)
-    plt.plot(radii, photons)
-
-    plt.xlabel("Radius (pc)")
-    plt.ylabel("Number of photons")
-    plt.title("Photons left after being absorbed by background gas")
-    plt.show()
-
-
-    temp = []
-    for radius in state.current_photon_profile:
-        temp.append(state.current_T_profile[radius])
-
-    fig = plt.figure()
-    fig.set_size_inches(10, 10) # 10 inches wide and long
-    ax = fig.add_subplot(111)
-    plt.plot(radii, temp)
-
-    plt.xlabel("Radius (pc)")
-    plt.ylabel("Temperature (K)")
-    plt.title("Temperature per radius after %.2f Myr" %(state.time / Myr))
-    plt.show()
-
-
-    nH = []
-    for radius in state.current_photon_profile:
-        nH.append(state.current_nH_profile[radius])
-
-    fig = plt.figure()
-    fig.set_size_inches(10, 10) # 10 inches wide and long
-    ax = fig.add_subplot(111)
-    plt.plot(radii, nH)
-
-    plt.xlabel("Radius (pc)")
-    plt.ylabel("Density (m^-3)")
-    plt.title("Hydrogen particle density per radius after %.2f Myr" %(state.time / Myr))
-    plt.show()
-
 
     if niterations < amount_of_frames:
         raise Exception("Amount_of_frames is higher than niterations")
