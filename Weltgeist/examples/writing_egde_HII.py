@@ -29,6 +29,33 @@ R_sun = 6.9634e8 # meters
 G = 6.67408e-11 # m^3 kg^-1 s^-2, the gravitational constant
 u = 1.660539e-27 # kg, atomic mass unit
 
+def alpha_B_HII(temperature):
+    """
+    Calculate the HII recombination rate
+    This is the rate at which ionised hydrogen recombines
+      into neutral hydrogen
+    Total recombinations per second per unit volume = alpha * ne * nH
+    ne = electron number density
+    nH = hydrogen number density
+
+    Parameters
+    ----------
+
+    temperature: float
+        Temperature in K
+
+    Returns
+    -------
+
+    alpha_B_HII : float
+        The recombination rate
+    """
+    # HII recombination rate
+    # input  : T in K
+    # output : HII recombination rate (in cm3 / s)
+    l = 315614./temperature
+    a = 2.753e-14 * l**1.5 / (1. + (l/2.74)**0.407)**2.242
+    return a
 
 def write_xlsx(cooling_on, gravity_on, file_name):
 
@@ -42,6 +69,8 @@ def write_xlsx(cooling_on, gravity_on, file_name):
     T0 = 10.0 # K
     gamma = 5.0/3.0 # monatomic gas (close enough...)
     QH = 1e49 # photons per second emitted, roughly a 35 solar mass star
+    Tion = 8400 # K
+
 
 
     integrator = weltgeist.integrator.Integrator()
@@ -103,12 +132,25 @@ def write_xlsx(cooling_on, gravity_on, file_name):
 
         x = hydro.x[:ncells]
         nH = hydro.nH[:ncells]
+        T = hydro.T[:ncells]
         nanalytic[:ncells] = n0
         time = integrator.time
         ri = weltgeist.analyticsolutions.SpitzerSolution(QH,n0,time)
         ni = weltgeist.analyticsolutions.SpitzerDensity(QH,n0,time)
         nanalytic[np.where(x <= ri)] = ni
         nH_analytic = nanalytic[:ncells]
+
+        # determining how many photons reach each radius of the box
+        alpha_B = alpha_B_HII(Tion)
+        recombinations = np.cumsum(4.0*np.pi*(hydro.x[0:ncells]+hydro.dx)**2.0 * hydro.nH[0:ncells]**2.0 * alpha_B * hydro.dx)
+
+        photons_reach = []
+        for recombination in recombinations:
+            photons_left = QH - recombination
+            if photons_left > 0:
+                photons_reach.append(photons_left)
+            else:
+                photons_reach.append(0)
 
         # find front edge of expansion HII region
         x_edge = None # create variable in case "i_edge" isn't found yet
@@ -126,20 +168,31 @@ def write_xlsx(cooling_on, gravity_on, file_name):
                 workbook.close()
                 exit()
 
+        amount_of_properties = 5
+
         # create titels in first row
-        sheet.write(step * 4 + 1, 0, "Time (s)")
-        sheet.write(step * 4 + 1, 1, integrator.time)
+        sheet.write(step * (amount_of_properties + 1) + 1, 0, "Time (s)")
+        sheet.write(step * (amount_of_properties + 1) + 1, 1, integrator.time)
 
-        sheet.write(step * 4 + 1, 3, "Time (Myr)")
-        sheet.write(step * 4 + 1, 4, integrator.time / Myr)
+        sheet.write(step * (amount_of_properties + 1) + 1, 3, "Time (Myr)")
+        sheet.write(step * (amount_of_properties + 1) + 1, 4, integrator.time / Myr)
 
-        sheet.write(step * 4 + 2, 0, "Radius (m)")
+        sheet.write(step * (amount_of_properties + 1) + 2, 0, "Radius (m)")
         for i in range(len(x)):
-            sheet.write(step * 4 + 2, i + 1, x[i])
+            sheet.write(step * (amount_of_properties + 1) + 2, i + 1, x[i])
 
-        sheet.write(step * 4 + 3, 0, "Density (cm^-3)")
+        sheet.write(step * (amount_of_properties + 1) + 3, 0, "Density (cm^-3)")
         for i in range(len(nH)):
-            sheet.write(step * 4 + 3, i + 1, nH[i])
+            sheet.write(step * (amount_of_properties + 1) + 3, i + 1, nH[i])
+
+        sheet.write(step * (amount_of_properties + 1) + 4, 0, "Temp (K)")
+        for i in range(len(nH)):
+            sheet.write(step * (amount_of_properties + 1) + 4, i + 1, T[i])
+
+        sheet.write(step * (amount_of_properties + 1) + 5, 0, "Photons")
+        for i in range(len(nH)):
+            sheet.write(step * (amount_of_properties + 1) + 5, i + 1, photons_reach[i])
+
 
         if x_edge:
             print(file_name, ": ", step * step_iterations, " iterations")
@@ -148,7 +201,7 @@ def write_xlsx(cooling_on, gravity_on, file_name):
             print()
 
         xlist = [x, x]
-        ylist = [nH, nH_analytic]
+        ylist = [nH, T]
 
         for lnum,line in enumerate(lines):
             line.set_data(xlist[lnum], ylist[lnum])
@@ -161,7 +214,7 @@ def write_xlsx(cooling_on, gravity_on, file_name):
     FuncAnimation(fig, animate, init_func=init, interval=10, blit=True)
     # plt.title("Particle density, nH, per radius")
     plt.xlabel("Distance (pc)")
-    plt.ylabel("Temperature")
+    plt.ylabel("$n_{H}$ / cm$^{-3}$")
     plt.show()
 
 
