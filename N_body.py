@@ -38,7 +38,7 @@ class State():
     This class is the current state of a set up involving a sun and x amount
     of clumps.
     """
-    def __init__(self, toggle_3D, amount_clumps, dt, boundary_box, clump_distribution, max_velocity_fraction, curl_fraction, cloud_mass, initial_clump_mass, use_Sams_data, random_movement_fraction):
+    def __init__(self, toggle_3D, amount_clumps, dt, boundary_box, clump_distribution, max_velocity_fraction, curl_fraction, cloud_mass, initial_clump_mass, use_Sams_clump_data, random_movement_fraction):
         self.amount_clumps = amount_clumps
         self.clumps = []
         self.boundary_box = boundary_box
@@ -61,7 +61,7 @@ class State():
         self.HII_radius = None
         self.n0 = None # standard particle density background gas
         self.T0 = None
-        self.T_max = None
+        self.Tion = None
         self.size_cell = None
         self.ncells = None
 
@@ -79,7 +79,7 @@ class State():
 
         # initiate all positions of the clumps
         random.seed(24352354)
-        if use_Sams_data:
+        if use_Sams_clump_data:
             for clump_name in data_clumps:
 
                 # place first clump as starter
@@ -274,7 +274,7 @@ class State():
             for i in range(self.ncells):
                 current_radius = self.size_cell * i
                 if current_radius < self.HII_radius:
-                    self.current_T_profile[self.size_cell * i] = self.T_max
+                    self.current_T_profile[self.size_cell * i] = self.Tion
                 else:
                     self.current_T_profile[self.size_cell * i] = self.T0
 
@@ -1155,51 +1155,6 @@ def save_number_density_plot(state, file_name):
     fig.savefig(my_path + "measurements/number_density_plots/" + file_name + ".png")
     plt.close(fig)
 
-# def plot_collisions(state, niterations):
-#     """
-#     This function runs the whole simulation till the end and then plots data
-#     about the clump collisions.
-#     """
-#     plot_mass_spectrum = False
-#     plot_distance_spectrum = True
-#
-#     for iteration in range(niterations):
-#         print(iteration)
-#         state.Step()
-#
-#     # histogram of mass spectrum
-#     if plot_mass_spectrum:
-#         fig, ax = plt.subplots(1, 1)
-#         fig.set_size_inches(10, 10) # 10 inches wide and long
-#
-#         # make a list with all masses of all clumps
-#         all_masses = []
-#         for clump in state.clumps:
-#             all_masses.append(clump.m / m_sun)
-#
-#         ax.cla()
-#         ax.hist(all_masses, rwidth=0.75)
-#         ax.set_xlabel('Mass ($M_{sun}$)')
-#         ax.set_ylabel('Frequency')
-#         plt.title("Mass spectrum after %.1f Myr" %(state.time / Myr))
-#         plt.show()
-#
-#     if plot_distance_spectrum:
-#         fig, ax = plt.subplots(1, 1)
-#         fig.set_size_inches(10, 10) # 10 inches wide and long
-#
-#         # make a list with all masses of all clumps
-#         distances = []
-#         for collision in state.collision_data:
-#             distances.append(collision["distance_to_CM"] / pc)
-#
-#         ax.cla()
-#         ax.hist(distances, rwidth=0.75)
-#         ax.set_xlabel('Distance to CM (pc)')
-#         ax.set_ylabel('Frequency')
-#         plt.title("Distance spectrum of collisions after %.1f Myr" %(state.time / Myr))
-#         plt.show()
-
 def save_impact_velocity_plot(state, file_name):
     """
     This function saves a plot of the collision velocity vs the distance to CM.
@@ -1287,9 +1242,9 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  2 * Myr # time frame in 10^6 years
+    time_frame =  2 * Myr
     niterations = 2000
-    size_box = 13 * pc # diameter of orbit of pluto
+    size_box = 13 * pc
     toggle_3D = True
 
     # animation settings
@@ -1299,13 +1254,12 @@ def set_up():
     weltgeist_data_file = "HII region expansion"
 
     # star settings
-    # minimum visable radius is size_box / 1000
-    R_star = 40 * R_sun # radius sun displayed in anmiation, not in scale
+    R_star = 40 * R_sun # radius star displayed in anmiation is not in scale
     M_star = 35 * m_sun
-    QH = 1e45 # photon per second emitted
+    QH = 1e49 # photon per second emitted
 
     # clump settings
-    use_Sams_data = False
+    use_Sams_clump_data = False
     amount_clumps = 30
     cloud_mass = 3400 * m_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
@@ -1316,7 +1270,7 @@ def set_up():
     # BGG settings
     n0 = 1e8 # m^-3, standard particle density of the background gas_pressure_on
     T0 = 10 # K, the dummy temperature outside the bubble
-    T_max = 8400 # K, the dummy temperature inside the bubble
+    Tion = 8400 # K, the dummy temperature inside the bubble
     ncells = 512
     size_cell = size_box / ncells
     import_weltgeist_data = False # if this is False, the program will use dummy data
@@ -1353,11 +1307,11 @@ def set_up():
                   curl_fraction, \
                   cloud_mass, \
                   initial_clump_mass, \
-                  use_Sams_data, \
+                  use_Sams_clump_data, \
                   random_movement_fraction)
     state.n0 = n0
     state.T0 = T0
-    state.T_max = T_max
+    state.Tion = Tion
     state.size_cell = size_cell
     state.ncells = ncells
     state.QH = QH
@@ -1369,7 +1323,7 @@ def set_up():
         state.Import_weltgeist_data(weltgeist_data_file)
 
     # toggle force parameters
-    state.gravity_star_on = False
+    state.gravity_star_on = True
     state.gravity_clumps_on = False
     state.gravity_BGG_on = True
 
