@@ -370,9 +370,9 @@ class State():
         the S_49 photon emission rate ratio (I set it to 1), the radius of the
         clump (r_c) and the distance of the clump to the star (R).
         """
-        S_49 = 1 # TODO: this might vary but for this project I'll keep it at 1
-        r_c = clump.R
-        R = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2)
+        S_49 = 1
+        r_c = clump.R / pc
+        R = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) / pc
         return 5.15e4 * S_49 * r_c / R**2
 
     def Mass_loss_factor(self, clump):
@@ -418,6 +418,7 @@ class State():
             a = (boundary_8[1] - boundary_7[1]) / (boundary_8[0] - boundary_7[0]) # dy/dx
             b = boundary_7[1] - a * boundary_7[0]
         else:
+            print(psi)
             raise Exception("Photon evaporation out of boundary")
 
         return a * log_psi + b
@@ -532,7 +533,7 @@ class State():
             c_i = (R * self.Tion / M_H) # speed of sound in ionized hydrogen gas, according to the ideal gas law
             u_D = c_i - (c_i**2 - c_I**2)**0.5 # characteristic D-critical I-front velocity
             mass_loss_factor = self.Mass_loss_factor(clump)
-            mass_loss = - 4 * np.pi * clump.R * u_D * clump.rho * mass_loss_factor # dm/dt
+            mass_loss = - 4 * np.pi * clump.R**2 * u_D * clump.rho * mass_loss_factor # dm/dt
             clump.m += mass_loss
 
             # find the acceleration due to clump evaporation
@@ -570,14 +571,7 @@ class State():
         self.Get_HII_radius()
 
         # check for collisions. If so, merge the two bodies
-        i = 0
-        while i < len(self.clumps):
-            j = i + 1
-            while j < len(self.clumps):
-                dr, dx, dy, dz = self.Distance(self.clumps[i], self.clumps[j])
-                self.Collision(self.clumps[i], self.clumps[j], dr)
-                j += 1
-            i += 1
+        self.Collision()
 
         # calculate all forces and acceleration
         if self.gravity_star_on:
@@ -612,10 +606,13 @@ class State():
             # if clumps have escaped the cloud and are beyond view, remove them
             if abs(clump.x) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
+                print('removeeeeeeeeeeee')
             elif abs(clump.y) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
+                print('removeeeeeeeeeeee')
             elif abs(clump.z) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
+                print('removeeeeeeeeeeee')
 
         # update time
         self.time += self.dt
@@ -775,22 +772,16 @@ class State():
         for clump in self.clumps:
             dr, dx, dy, dz = self.Distance(clump, self.star)
 
-            merge_factor = 1
-            if dr < merge_factor * (self.star.R + clump.R):
-                self.star.R = self.star.R * (self.star.m + clump.m) / self.star.m
-                self.star.m += clump.m
-                self.clumps.remove(clump)
             ## use this code when the star is NOT kept fixed
-            # if not self.Collision(self.star, clump, dr):
-                # a_star = G * clump.m / dr**2
-                # self.star.ax += -a_star * dx / dr
-                # self.star.ay += -a_star * dy / dr
-                # self.star.az += -a_star * dz / dr
+            # a_star = G * clump.m / dr**2
+            # self.star.ax += -a_star * dx / dr
+            # self.star.ay += -a_star * dy / dr
+            # self.star.az += -a_star * dz / dr
 
-                a_clump = G * self.star.m / dr**2
-                clump.ax += a_clump * dx / dr
-                clump.ay += a_clump * dy / dr
-                clump.az += a_clump * dz / dr
+            a_clump = G * self.star.m / dr**2
+            clump.ax += a_clump * dx / dr
+            clump.ay += a_clump * dy / dr
+            clump.az += a_clump * dz / dr
 
     def Gravity_clumps(self):
         """
@@ -843,75 +834,92 @@ class State():
         dr = np.sqrt(dx**2 + dy**2 + dz**2)
         return dr, dx, dy, dz
 
-    def Collision(self, clump1, clump2, dr):
+    def Collision(self):
         """
         This function checks if there have been clumps which collided, it will
         then create a new clump of combined mass, momentum and new corresponding
         size. "clump1" will be updated, "clump2" will be removed.
         """
-        # the merge factor states how much two clumps have to overlap before
-        # they merge
-        merge_factor = 0.6
-        if dr < merge_factor * (clump1.R + clump2.R):
+        # the merge factor states how much two bodies have to overlap before they merge
+        merge_factor_clumps = 0.6
+        merge_factor_star = 1
 
-            # impact velocity
-            abs_velocity1 = np.sqrt(clump1.vx**2 + clump1.vy**2 + clump1.vz**2)
-            abs_velocity2 = np.sqrt(clump2.vx**2 + clump2.vy**2 + clump2.vz**2)
-            product_abs_velocity = abs_velocity1 * abs_velocity2
+        # check if clumps collide with the central star
+        for clump in self.clumps:
+            dr, dx, dy, dz = self.Distance(clump, self.star)
+            if dr < merge_factor_star * (self.star.R + clump.R):
+                self.star.R = self.star.R * (self.star.m + clump.m) / self.star.m
+                self.star.m += clump.m
+                self.clumps.remove(clump)
 
-            inproduct_vectors = clump1.vx * clump2.vx + \
-                                clump1.vy * clump2.vy + \
-                                clump1.vz * clump2.vz
+        # check if clumps collide with each other
+        i = 0
+        while i < len(self.clumps):
+            j = i + 1
+            while j < len(self.clumps):
+                clump1 = self.clumps[i]
+                clump2 = self.clumps[j]
+                dr, dx, dy, dz = self.Distance(clump1, clump2)
 
-            # angle between the velocity vectors
-            theta = np.arccos(inproduct_vectors / product_abs_velocity)
-            impact_velocity1 = abs_velocity1 * np.sin(theta)
-            impact_velocity2 = abs_velocity2 * np.sin(theta)
-            tot_impact_velocity = impact_velocity1 + impact_velocity2
+                if dr < merge_factor_clumps * (clump1.R + clump2.R):
 
+                    # impact velocity
+                    abs_velocity1 = np.sqrt(clump1.vx**2 + clump1.vy**2 + clump1.vz**2)
+                    abs_velocity2 = np.sqrt(clump2.vx**2 + clump2.vy**2 + clump2.vz**2)
+                    product_abs_velocity = abs_velocity1 * abs_velocity2
 
-            # find centre of mass
-            clump1.x = (clump1.x *clump1.m + clump2.x * clump2.m)\
-                          / (clump1.m + clump2.m)
-            clump1.y = (clump1.y *clump1.m + clump2.y * clump2.m)\
-                          / (clump1.m + clump2.m)
-            clump1.z = (clump1.z *clump1.m + clump2.z * clump2.m)\
-                          / (clump1.m + clump2.m)
+                    inproduct_vectors = clump1.vx * clump2.vx + \
+                                        clump1.vy * clump2.vy + \
+                                        clump1.vz * clump2.vz
 
-            # find new velocity with conservation of impuls
-            clump1.vx = (clump1.vx *clump1.m + clump2.vx * clump2.m)\
-                           / (clump1.m + clump2.m)
-            clump1.vy = (clump1.vy *clump1.m + clump2.vy * clump2.m)\
-                           / (clump1.m + clump2.m)
-            clump1.vz = (clump1.vz *clump1.m + clump2.vz * clump2.m)\
-                           / (clump1.m + clump2.m)
+                    # angle between the velocity vectors
+                    theta = np.arccos(inproduct_vectors / product_abs_velocity)
+                    impact_velocity1 = abs_velocity1 * np.sin(theta)
+                    impact_velocity2 = abs_velocity2 * np.sin(theta)
+                    tot_impact_velocity = impact_velocity1 + impact_velocity2
 
-            # distance from the collision to the CM of the cloud
-            CM_x = self.CM[0]
-            CM_y = self.CM[1]
-            CM_z = self.CM[2]
-            distance = np.sqrt((CM_x - clump1.x)**2 + \
-                               (CM_y - clump1.y)**2 + \
-                               (CM_z - clump1.z)**2)
+                    # find centre of mass
+                    clump1.x = (clump1.x *clump1.m + clump2.x * clump2.m)\
+                                  / (clump1.m + clump2.m)
+                    clump1.y = (clump1.y *clump1.m + clump2.y * clump2.m)\
+                                  / (clump1.m + clump2.m)
+                    clump1.z = (clump1.z *clump1.m + clump2.z * clump2.m)\
+                                  / (clump1.m + clump2.m)
 
-            # saving collision data
-            collision = {
-               "impact_velocity": tot_impact_velocity,
-               "time": self.time,
-               "clump_masses": [clump1.m, clump2.m],
-               "distance_to_CM": distance,
-               "impact_angle": theta
-            }
-            self.collision_data.append(collision)
+                    # find new velocity with conservation of impuls
+                    clump1.vx = (clump1.vx *clump1.m + clump2.vx * clump2.m)\
+                                   / (clump1.m + clump2.m)
+                    clump1.vy = (clump1.vy *clump1.m + clump2.vy * clump2.m)\
+                                   / (clump1.m + clump2.m)
+                    clump1.vz = (clump1.vz *clump1.m + clump2.vz * clump2.m)\
+                                   / (clump1.m + clump2.m)
 
-            clump1.m = clump1.m + clump2.m
-            clump1.R = self.Radius_clump(clump1.m)
-            clump1.V = 4 / 3 * np.pi * R**3
-            clump1.rho = clump1.m / clump1.V
-            self.clumps.remove(clump2)
-            return True
+                    # distance from the collision to the CM of the cloud
+                    CM_x = self.CM[0]
+                    CM_y = self.CM[1]
+                    CM_z = self.CM[2]
+                    distance = np.sqrt((CM_x - clump1.x)**2 + \
+                                       (CM_y - clump1.y)**2 + \
+                                       (CM_z - clump1.z)**2)
 
-        return False
+                    # saving collision data
+                    collision = {
+                       "impact_velocity": tot_impact_velocity,
+                       "time": self.time,
+                       "clump_masses": [clump1.m, clump2.m],
+                       "distance_to_CM": distance,
+                       "impact_angle": theta
+                    }
+                    self.collision_data.append(collision)
+
+                    clump1.m = clump1.m + clump2.m
+                    clump1.R = self.Radius_clump(clump1.m)
+                    clump1.V = 4 / 3 * np.pi * clump1.R**3
+                    clump1.rho = clump1.m / clump1.V
+                    print(clump1.rho)
+                    self.clumps.remove(clump2)
+                j += 1
+            i += 1
 
     def Find_CM(self):
         """
@@ -1092,6 +1100,7 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
             scat_CM = ax_scat.scatter(state.CM[0], state.CM[1], label = "Centre of Mass", facecolor = "green")
 
         print("Time: %.2f Myr" %round(state.time / Myr, 2))
+        print("Clumps left: ", len(state.clumps))
         print()
 
         # assemble the return list full with the animation parts
@@ -1449,7 +1458,7 @@ def set_up():
     time_frame =  2 * Myr
     niterations = 2000
     size_box = 13 * pc
-    toggle_3D = True
+    toggle_3D = False
 
     # animation settings
     boundary_box = -size_box/2, size_box/2
@@ -1477,7 +1486,7 @@ def set_up():
     ncells = 512
     size_cell = size_box / ncells
     import_weltgeist_data = False # if this is False, the program will use dummy data
-    animate_HII = True
+    animate_HII = False
 
 
     # choose one
@@ -1527,8 +1536,8 @@ def set_up():
 
     # toggle force parameters
     state.gravity_star_on = True
-    state.gravity_clumps_on = True
-    state.gravity_BGG_on = True
+    state.gravity_clumps_on = False
+    state.gravity_BGG_on = False
     state.clump_evaportation_on = False
 
     state.stellar_wind_on = False # TODO
