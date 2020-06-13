@@ -473,6 +473,52 @@ class State():
 
         return a * log_psi + b
 
+    def phi_factor(self, clump):
+        """
+        This phi factor is a combination of the mass loss factor, the mass
+        factor and the mass radius factor.
+        """
+        psi = self.PE_parameter(clump) # photon evaporation parameter
+        log_psi = np.log10(psi)
+
+        boundary_1 = (-0.6, -0.39)
+        boundary_2 = (-0.4, -0.36)
+        boundary_3 = (-0.1, -0.28)
+        boundary_4 = (0.6, -0.06)
+        boundary_5 = (1.05, 0.12)
+        boundary_6 = (1.62, 0.32)
+        boundary_7 = (2.7, 0.45)
+        boundary_8 = (7.1, 0.55)
+
+        # "y = ax + b", we find "a" and "b" by looking at the boundary coordinates
+        if log_psi > boundary_1[0] and log_psi < boundary_2[0]:
+            a = (boundary_2[1] - boundary_1[1]) / (boundary_2[0] - boundary_1[0]) # dy/dx
+            b = boundary_1[1] - a * boundary_1[0]
+        elif log_psi > boundary_2[0] and log_psi < boundary_3[0]:
+            a = (boundary_3[1] - boundary_2[1]) / (boundary_3[0] - boundary_2[0]) # dy/dx
+            b = boundary_2[1] - a * boundary_2[0]
+        elif log_psi > boundary_3[0] and log_psi < boundary_4[0]:
+            a = (boundary_4[1] - boundary_3[1]) / (boundary_4[0] - boundary_3[0]) # dy/dx
+            b = boundary_3[1] - a * boundary_3[0]
+        elif log_psi > boundary_4[0] and log_psi < boundary_5[0]:
+            a = (boundary_5[1] - boundary_4[1]) / (boundary_5[0] - boundary_4[0]) # dy/dx
+            b = boundary_4[1] - a * boundary_4[0]
+        elif log_psi > boundary_5[0] and log_psi < boundary_6[0]:
+            a = (boundary_6[1] - boundary_5[1]) / (boundary_6[0] - boundary_5[0]) # dy/dx
+            b = boundary_5[1] - a * boundary_5[0]
+        elif log_psi > boundary_6[0] and log_psi < boundary_7[0]:
+            a = (boundary_7[1] - boundary_6[1]) / (boundary_7[0] - boundary_6[0]) # dy/dx
+            b = boundary_6[1] - a * boundary_6[0]
+        elif log_psi > boundary_7[0] and log_psi < boundary_8[0]:
+            a = (boundary_8[1] - boundary_7[1]) / (boundary_8[0] - boundary_7[0]) # dy/dx
+            b = boundary_7[1] - a * boundary_7[0]
+        else:
+            raise Exception("Photon evaporation out of boundary")
+
+        log_phi = a * log_psi + b
+        phi = 10**log_phi
+        return phi
+
     def Rocket_velocity(self, clump):
         """
         This function returns the rocket velocity (V_R) depending on gamma and
