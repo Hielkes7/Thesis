@@ -364,16 +364,30 @@ class State():
         if self.use_weltgeist_dummy_data:
             return self.QH * (radius / self.HII_radius)**2
 
+    def Get_S49(self, clump):
+        """
+        This function return the value of S_49 which is the fraction of photons
+        which reached the given clump.
+        """
+        clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
+        for distance in self.current_photon_profile:
+            if distance > clump_distance:
+                amount_of_photon = self.current_photon_profile[distance]
+                break
+        S_49 = amount_of_photon / self.QH
+        return S_49
+
     def PE_parameter(self, clump):
         """
         This function returns the photon evaporation parameter depending on
         the S_49 photon emission rate ratio (I set it to 1), the radius of the
         clump (r_c) and the distance of the clump to the star (R).
         """
-        S_49 = 1
-        r_c = clump.R / pc
-        R = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) / pc
-        return 5.15e4 * S_49 * r_c / R**2
+        S_49 = self.Get_S49(clump)     # fraction of photons reaching the clump
+        r_pc = clump.R / pc   # radius of clump in pc
+        R_pc = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) / pc   # distance of clump in pc
+        psi = 5.15e4 * S_49 * r_pc / R_pc**2
+        return psi
 
     def Mass_loss_factor(self, clump):
         """
@@ -473,13 +487,14 @@ class State():
 
         return a * log_psi + b
 
-    def phi_factor(self, clump):
+    def Phi_factor(self, clump):
         """
         This phi factor is a combination of the mass loss factor, the mass
         factor and the mass radius factor.
         """
         psi = self.PE_parameter(clump) # photon evaporation parameter
-        log_psi = np.log10(psi)
+        if psi != 0:
+            log_psi = np.log10(psi)
 
         boundary_1 = (-0.6, -0.39)
         boundary_2 = (-0.4, -0.36)
@@ -491,7 +506,10 @@ class State():
         boundary_8 = (7.1, 0.55)
 
         # "y = ax + b", we find "a" and "b" by looking at the boundary coordinates
-        if log_psi > boundary_1[0] and log_psi < boundary_2[0]:
+        if psi == 0:
+            phi = boundary_1[1]
+            return phi
+        elif log_psi < boundary_2[0]:
             a = (boundary_2[1] - boundary_1[1]) / (boundary_2[0] - boundary_1[0]) # dy/dx
             b = boundary_1[1] - a * boundary_1[0]
         elif log_psi > boundary_2[0] and log_psi < boundary_3[0]:
@@ -538,7 +556,7 @@ class State():
         boundary_8 = (7.1, 0.85)
 
         # "y = ax + b", we find "a" and "b" by looking at the boundary coordinates
-        if log_psi > boundary_1[0] and log_psi < boundary_2[0]:
+        if psi == 0 or log_psi < boundary_2[0]:
             a = (boundary_2[1] - boundary_1[1]) / (boundary_2[0] - boundary_1[0]) # dy/dx
             b = boundary_1[1] - a * boundary_1[0]
         elif log_psi > boundary_2[0] and log_psi < boundary_3[0]:
@@ -573,24 +591,29 @@ class State():
         check the 1990 paper by Bertoldi and McKee about clump evaporation.
         """
         for clump in self.clumps:
-
             # update the mass loss due to clump evaporation
-            c_I = (R * self.T0 / M_H) # speed of sound in neutral hydrogen gas, according to the ideal gas law
-            c_i = (R * self.Tion / M_H) # speed of sound in ionized hydrogen gas, according to the ideal gas law
-            u_D = c_i - (c_i**2 - c_I**2)**0.5 # characteristic D-critical I-front velocity
-            mass_loss_factor = self.Mass_loss_factor(clump)
-            mass_loss = - 4 * np.pi * clump.R**2 * u_D * clump.rho * mass_loss_factor # dm/dt
-            clump.m += mass_loss
+            S_49 = self.Get_S49(clump)
+            if S_49 != 0:  # if S_49==0 then there is not clump evaporation
+                clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2)
+                phi_factor = self.Phi_factor(clump)
+                mass_loss = 1.49e-3 * phi_factor * np.sqrt(S_49 * pc**2 / clump_distance**2) * \
+                            (clump.R / pc)**3/2 * m_sun / yr     # mass loss in kg's per sec
+                clump.m += mass_loss
 
-            # find the acceleration due to clump evaporation
-            V_R = self.Rocket_velocity(clump)
-            g = -V_R / clump.m * mass_loss
+                # remove clump is its mass is below zero
+                if clump.m < 0:
+                    self.clumps.remove(clump)
 
-            # let the acceleration go in the correct direction
-            dr, dx, dy, dz = self.Distance(clump, self.star)
-            clump.ax += -g * dx / dr
-            clump.ay += -g * dy / dr
-            clump.az += -g * dz / dr
+                else:
+                    # find the acceleration due to clump evaporation
+                    V_R = self.Rocket_velocity(clump)
+                    g = -V_R / clump.m * mass_loss
+
+                    # let the acceleration go in the correct direction
+                    dr, dx, dy, dz = self.Distance(clump, self.star)
+                    clump.ax += g * dx / dr
+                    clump.ay += g * dy / dr
+                    clump.az += g * dz / dr
 
     def Step(self):
         """
@@ -652,13 +675,10 @@ class State():
             # if clumps have escaped the cloud and are beyond view, remove them
             if abs(clump.x) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
-                print('removeeeeeeeeeeee')
             elif abs(clump.y) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
-                print('removeeeeeeeeeeee')
             elif abs(clump.z) > 3 * self.boundary_box[1]:
                 self.clumps.remove(clump)
-                print('removeeeeeeeeeeee')
 
         # update time
         self.time += self.dt
@@ -1053,8 +1073,7 @@ class Object():
       self.rho = rho  # mass density of object
 
     def __str__(self):
-      return f"A clump of mass {self.m} and radius \
-             {self.R} at position ({self.x}, {self.y})"
+      return f"x={self.x}, y={self.y}, z={self.z}, vx={self.vx}, vy={self.vy}, vz={self.vz}, ax={self.ax}, ay={self.ay}, az={self.az}, m={self.m}, R={self.R}, V={self.V}, rho={self.rho}"
 
 def animation(state, amount_of_frames, niterations, size_box, animate_CM, animate_HII, weltgeist_data_file):
     """
@@ -1501,9 +1520,9 @@ def set_up():
     This function contains all the input values. The user adjusts them.
     """
     # simulation settings
-    time_frame =  2 * Myr
+    time_frame =  0.2 * Myr
     niterations = 2000
-    size_box = 13 * pc
+    size_box = 100 * pc
     toggle_3D = False
 
     # animation settings
@@ -1518,7 +1537,7 @@ def set_up():
 
     # clump settings
     use_Sams_clump_data = False
-    amount_clumps = 30
+    amount_clumps = 2
     cloud_mass = 3400 * m_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     max_velocity_fraction = 0
@@ -1532,7 +1551,7 @@ def set_up():
     ncells = 512
     size_cell = size_box / ncells
     import_weltgeist_data = False # if this is False, the program will use dummy data
-    animate_HII = False
+    animate_HII = True
 
 
     # choose one
@@ -1581,10 +1600,10 @@ def set_up():
         state.Import_weltgeist_data(weltgeist_data_file)
 
     # toggle force parameters
-    state.gravity_star_on = True
+    state.gravity_star_on = False
     state.gravity_clumps_on = False
     state.gravity_BGG_on = False
-    state.clump_evaportation_on = False
+    state.clump_evaportation_on = True
 
     state.stellar_wind_on = False # TODO
     state.radiation_pressure_on = False # TODO
