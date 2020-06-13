@@ -47,7 +47,6 @@ class State():
         self.amount_clumps = amount_clumps
         self.clumps = []
         self.radius_cloud = radius_cloud
-        self.size_box = 2 * radius_cloud[1]
         self.time = 0
         self.dt = dt
         self.begin_time = time.time()
@@ -131,7 +130,7 @@ class State():
 
         else:
             for _ in range(self.amount_clumps):
-                d_max = radius_cloud[1]
+                d_max = radius_cloud
                 if self.constant_clump_distribution:
                     d = random.random() * d_max
                 if self.power_law_clump_distribution:
@@ -742,84 +741,15 @@ class State():
             clump.z += clump.vz * self.dt
 
             # if clumps have escaped the cloud and are beyond view, remove them
-            if abs(clump.x) > 3 * self.radius_cloud[1]:
+            if abs(clump.x) > 3 * self.radius_cloud:
                 self.clumps.remove(clump)
-            elif abs(clump.y) > 3 * self.radius_cloud[1]:
+            elif abs(clump.y) > 3 * self.radius_cloud:
                 self.clumps.remove(clump)
-            elif abs(clump.z) > 3 * self.radius_cloud[1]:
+            elif abs(clump.z) > 3 * self.radius_cloud:
                 self.clumps.remove(clump)
 
         # update time
         self.time += self.dt
-
-    def Plot(self):
-        """
-        This function makes a plot of the current state of the set up
-        """
-        fig = plt.figure()
-        fig.set_size_inches(10, 10) # 10 inches wide and long
-
-        # creating ticks on axis
-        amount_of_pc = int(self.radius_cloud[1] / pc) * 2 + 1
-        max_amount_ticks = 21
-        factor_pc = int(amount_of_pc / max_amount_ticks) + 1
-        amount_of_ticks = int(amount_of_pc / factor_pc) + 1
-        middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
-        distance_values = []
-        axis_labels = []
-        for i in range(amount_of_ticks):
-            axis_labels.append((i - middle_tick) * factor_pc)
-            distance_values.append((i - middle_tick) * factor_pc * pc)
-
-        # if the simulation is in 3D
-        if self.toggle_3D:
-            ax = fig.add_subplot(111, projection='3d')
-
-            if self.star:
-                ax.scatter(self.star.x, self.star.y, self.star.z, s= 8e4 * \
-                           self.star.R**2 / self.radius_cloud[1]**2, c='red')
-            for clump in self.clumps:
-                ax.scatter(clump.x, clump.y, clump.z, s= np.pi * 1e5 * clump.R**2\
-                           / self.radius_cloud[1]**2, c='blue')
-
-
-            ax.set_zlim(self.radius_cloud)
-            ax.set_zlabel('Distance (pc)')
-            ax.set_zticks(distance_values)
-            ax.set_zticklabels(axis_labels)
-
-        # plot of 2D state
-        else:
-            ax = fig.add_subplot(111)
-
-            # plot star
-            if self.star:
-                plt.scatter(self.star.x, self.star.y, label="Star",\
-                            facecolor="red")
-
-            # plot clumps
-            for clump in self.clumps:
-                plt.scatter(clump.x, clump.y, s=1.24e6 * clump.R**2 * \
-                            self.size_box**(-2), label = "Clump", \
-                            facecolor = "blue")
-
-        # settings that apply for both 2D and 3D
-        ax.set_xlabel('Distance (pc)')
-        ax.set_ylabel('Distance (pc)')
-
-        ax.set_xticks(distance_values)
-        ax.set_xticklabels(axis_labels)
-        ax.set_yticks(distance_values)
-        ax.set_yticklabels(axis_labels)
-
-        ax.set_xlim(self.radius_cloud)
-        ax.set_ylim(self.radius_cloud)
-
-        ax.set_xlabel('Distance (pc)')
-        ax.set_ylabel('Distance (pc)')
-        plt.title("State of cloud after %.1f Myr" %(self.time / Myr))
-        plt.grid()
-        plt.show()
 
     def Radiation_pressure(self):
         """
@@ -1115,11 +1045,11 @@ class State():
 
     def __str__(self):
         if self.toggle_3D:
-            return f"{self.amount_clumps} clumps in a {self.radius_cloud[1]}x\
-                   {self.radius_cloud[1]}x{self.radius_cloud[1]} box"
+            return f"{self.amount_clumps} clumps in a {self.radius_cloud}x\
+                   {self.radius_cloud}x{self.radius_cloud} box"
         else:
-            return f"{self.amount_clumps} clumps in a {self.radius_cloud[1]}x\
-                   {self.radius_cloud[1]} box"
+            return f"{self.amount_clumps} clumps in a {self.radius_cloud}x\
+                   {self.radius_cloud} box"
 
 
 class Object():
@@ -1144,7 +1074,7 @@ class Object():
     def __str__(self):
       return f"x={self.x}, y={self.y}, z={self.z}, vx={self.vx}, vy={self.vy}, vz={self.vz}, ax={self.ax}, ay={self.ay}, az={self.az}, m={self.m}, R={self.R}, V={self.V}, rho={self.rho}"
 
-def animation(state, amount_of_frames, niterations, size_box, animate_CM, animate_HII, weltgeist_data_file):
+def animation(state, amount_of_frames, niterations, size_viewing_window, animate_CM, animate_HII, weltgeist_data_file):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -1184,7 +1114,7 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
                     transform=ax_scat.transAxes, ha="center")
 
     # creating ticks on axis
-    amount_of_pc = int(state.radius_cloud[1] / pc) * 2 + 1
+    amount_of_pc = int(size_viewing_window / pc) + 1
     max_amount_ticks = 21
     factor_pc = int(amount_of_pc / max_amount_ticks) + 1
     amount_of_ticks = int(amount_of_pc / factor_pc) + 1
@@ -1203,13 +1133,13 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
     ax_scat.set_yticks(distance_values)
     ax_scat.set_yticklabels(axis_labels)
 
-    ax_scat.set_xlim(state.radius_cloud)
-    ax_scat.set_ylim(state.radius_cloud)
+    ax_scat.set_xlim(-size_viewing_window / 2, size_viewing_window / 2)
+    ax_scat.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
 
     def update_scat(frame):
         if animate_HII and state.star and state.HII_radius:
             HII_region = ax_scat.scatter(state.star.x, state.star.y, \
-                         s=1.24e6 * state.HII_radius**2 * size_box**(-2), \
+                         s=1.24e6 * state.HII_radius**2 * size_viewing_window**(-2), \
                          label = "HII region", facecolor = "#ffffff")
 
         offsets = []
@@ -1224,7 +1154,7 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
         # animate clumps
         for clump in state.clumps:
             offsets.append([clump.x, clump.y])
-            sizes.append(1.24e6 * clump.R**2 * size_box**(-2))
+            sizes.append(1.24e6 * clump.R**2 * size_viewing_window**(-2))
         if state.clumps:
             scat.set_offsets(offsets)
             scat.set_sizes(sizes)
@@ -1328,7 +1258,7 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
     This function saves a frame of the scatter animation.
     """
     # creating ticks on axis
-    amount_of_pc = int(state.radius_cloud[1] / pc) * 2 + 1
+    amount_of_pc = int(size_viewing_window / pc) + 1
     max_amount_ticks = 21
     factor_pc = int(amount_of_pc / max_amount_ticks) + 1
     amount_of_ticks = int(amount_of_pc / factor_pc) + 1
@@ -1352,13 +1282,13 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
             facecolor = "lightblue")
 
             plt.scatter(state.star.x, state.star.y, s=1.24e6 * state.HII_radius**2\
-                        * state.size_box**(-2), label = "HII region", \
+                        * state.size_viewing_window**(-2), label = "HII region", \
                         facecolor = "white")
 
         # plot clumps
         for clump in state.clumps:
             plt.scatter(clump.x, clump.y, s=1.24e6 * clump.R**2 * \
-                        state.size_box**(-2), label = "Clump", \
+                        state.size_viewing_window**(-2), label = "Clump", \
                         facecolor = "blue")
 
         # plot star
@@ -1380,8 +1310,8 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         ax.set_yticks(distance_values)
         ax.set_yticklabels(axis_labels)
 
-        ax.set_xlim(state.radius_cloud * 1.5)
-        ax.set_ylim(state.radius_cloud * 1.5)
+        ax.set_xlim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
 
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
@@ -1403,7 +1333,7 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
             facecolor = "lightblue", alpha=0.5)
 
             ax.scatter(state.star.x, state.star.y, state.star.z, s=1.24e6 * state.HII_radius**2\
-                        * state.size_box**(-2), label = "HII region", \
+                        * state.size_viewing_window**(-2), label = "HII region", \
                         facecolor = "white")
 
         # plot star
@@ -1414,7 +1344,7 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         # plot clumps
         for clump in state.clumps:
             ax.scatter(clump.x, clump.y, clump.z, s=1.24e6 * clump.R**2 * \
-                        state.size_box**(-2), label = "Clump", \
+                        state.size_viewing_window**(-2), label = "Clump", \
                         facecolor = "blue")
 
         # plot centre of mass
@@ -1434,9 +1364,9 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         ax.set_zticks(distance_values)
         ax.set_zticklabels(axis_labels)
 
-        ax.set_xlim(state.radius_cloud)
-        ax.set_ylim(state.radius_cloud)
-        ax.set_zlim(state.radius_cloud)
+        ax.set_xlim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_zlim(-size_viewing_window / 2, size_viewing_window / 2)
 
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
@@ -1592,13 +1522,13 @@ def set_up():
     print("############################################# BEGIN ##################################################################")
 
     # simulation settings
-    time_frame =  0.2 * Myr
+    time_frame =  1 * Myr
     niterations = 2000
-    size_box = 13 * pc
     toggle_3D = False
 
     # animation settings
-    radius_cloud = -6.5 * pc, 6.5 * pc
+    size_viewing_window = 30 * pc
+    radius_cloud = 6.5 * pc
     amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
     weltgeist_data_file = "HII region expansion"
@@ -1621,7 +1551,7 @@ def set_up():
     T0 = 10 # K, temperature of neutral gas (not touched by radiation yet)
     Tion = 8400 # K, temperature of ionized hydrogen
     ncells = 512
-    size_cell = size_box / ncells
+    size_cell = radius_cloud * 2 / ncells
     import_weltgeist_data = False # if this is False, the program will use dummy data
     animate_HII = True
 
@@ -1668,7 +1598,7 @@ def set_up():
     if init_star:
         state.Initiate_star(M_star)
     if import_weltgeist_data:
-        state.use_weltgeist_dummy_data = False
+        state.use_weltgeist_dummy_data = True
         state.Import_weltgeist_data(weltgeist_data_file)
 
     # toggle force parameters
@@ -1695,7 +1625,7 @@ def set_up():
         animation(state, \
                   amount_of_frames, \
                   niterations, \
-                  size_box, \
+                  size_viewing_window, \
                   animate_CM, \
                   animate_HII, \
                   weltgeist_data_file)
