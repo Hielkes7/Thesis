@@ -43,11 +43,11 @@ class State():
     This class is the current state of a set up involving a sun and x amount
     of clumps.
     """
-    def __init__(self, toggle_3D, amount_clumps, dt, boundary_box, clump_distribution, max_velocity_fraction, curl_fraction, cloud_mass, initial_clump_mass, use_Sams_clump_data, random_movement_fraction):
+    def __init__(self, toggle_3D, amount_clumps, dt, radius_cloud, clump_distribution, max_velocity_fraction, curl_fraction, cloud_mass, initial_clump_mass, use_Sams_clump_data, random_movement_fraction):
         self.amount_clumps = amount_clumps
         self.clumps = []
-        self.boundary_box = boundary_box
-        self.size_box = 2 * boundary_box[1]
+        self.radius_cloud = radius_cloud
+        self.size_box = 2 * radius_cloud[1]
         self.time = 0
         self.dt = dt
         self.begin_time = time.time()
@@ -70,10 +70,15 @@ class State():
         self.size_cell = None
         self.ncells = None
 
+        self.print_info = False
+
         # toggle variables, they get toggled on somewhere else
         self.gravity_star_on = False
         self.gravity_clumps_on = False
         self.gravity_BGG_on = False
+        self.clump_evaportation_on = False
+        self.drag_on = False
+
 
         if clump_distribution == "constant":
             self.constant_clump_distribution = True
@@ -126,7 +131,7 @@ class State():
 
         else:
             for _ in range(self.amount_clumps):
-                d_max = boundary_box[1]
+                d_max = radius_cloud[1]
                 if self.constant_clump_distribution:
                     d = random.random() * d_max
                 if self.power_law_clump_distribution:
@@ -369,6 +374,11 @@ class State():
         This function return the value of S_49 which is the fraction of photons
         which reached the given clump.
         """
+        if self.print_info:
+            print("Get_S49,    iteration: ", self.time / self.dt)
+            print(clump)
+            print()
+
         clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
         for distance in self.current_photon_profile:
             if distance > clump_distance:
@@ -383,6 +393,11 @@ class State():
         the S_49 photon emission rate ratio (I set it to 1), the radius of the
         clump (r_c) and the distance of the clump to the star (R).
         """
+        if self.print_info:
+            print("PE_parameter,    iteration: ", self.time / self.dt)
+            print(clump)
+            print()
+
         S_49 = self.Get_S49(clump)     # fraction of photons reaching the clump
         r_pc = clump.R / pc   # radius of clump in pc
         R_pc = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) / pc   # distance of clump in pc
@@ -492,6 +507,11 @@ class State():
         This phi factor is a combination of the mass loss factor, the mass
         factor and the mass radius factor.
         """
+        if self.print_info:
+            print("Phi_factor,    iteration: ", self.time / self.dt)
+            print(clump)
+            print()
+
         psi = self.PE_parameter(clump) # photon evaporation parameter
         if psi != 0:
             log_psi = np.log10(psi)
@@ -543,6 +563,11 @@ class State():
         the photo evaporation parameter. For the fitted graph of the mass loss
         factor check the file data/"mass loss parameter...."
         """
+        if self.print_info:
+            print("PE_parameter,    iteration: ", self.time / self.dt)
+            print(clump)
+            print()
+
         psi = self.PE_parameter(clump) # photon evaporation parameter
         log_psi = np.log10(psi)
 
@@ -589,7 +614,18 @@ class State():
         This function calculates the acceleration due to clump evaporation. It
         also calculates the mass loss due to clump evaporation. For fomula's
         check the 1990 paper by Bertoldi and McKee about clump evaporation.
+
+        TODO: currently the clump evaporation kicks in when the HII region
+        reaches the centre of the clump. It would more accurate if the clump
+        evaporation kicks in as soon as any part of the clump gets exposed to
+        radiation. And then have the clump evaporation depend on A, the area
+        exposed to the radiation (cross sectional area).
         """
+        if self.print_info:
+            print("Clump_evaporation,    iteration: ", self.time / self.dt)
+            print(self.clumps[0])
+            print()
+
         for clump in self.clumps:
             # update the mass loss due to clump evaporation
             S_49 = self.Get_S49(clump)
@@ -614,6 +650,37 @@ class State():
                     clump.ax += g * dx / dr
                     clump.ay += g * dy / dr
                     clump.az += g * dz / dr
+
+    def Drag(self):
+        """
+        This function calculates the acceleration of the clumps due to drag
+        of moving through the background gas. I make the assumption that the
+        BGG is stationary.
+        """
+        if self.print_info:
+            print("Drag,    iteration: ", self.time / self.dt)
+            print(self.clumps[0])
+            print()
+
+        for clump in self.clumps:
+
+            # get the mass density of the BGG
+            clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
+            for distance in self.current_nH_profile:
+                if distance > clump_distance:
+                    rho_BGG = self.current_nH_profile[distance] * m_H  # mass density of the BGG
+                    break
+
+            v = np.sqrt(clump.vx**2 + clump.vy**2 + clump.vz**2)  # speed of the clump relative to the BGG
+            C_D = 0.47   # drag coefficient for a sphere
+            A = np.pi * clump.R**2   # cross sectional area
+
+            # calculate the acceleration due to drag and its direction (opposite to its velocity)
+            if v != 0:
+                a_drag = 0.5 * rho_BGG * v**2 * C_D * A / clump.m
+                clump.ax += -a_drag * clump.vx / v
+                clump.ay += -a_drag * clump.vy / v
+                clump.az += -a_drag * clump.vz / v
 
     def Step(self):
         """
@@ -651,6 +718,8 @@ class State():
             self.Gravity_BGG()
         if self.clump_evaportation_on:
             self.Clump_evaporation()
+        if self.drag_on:
+            self.Drag()
 
         # # calcualte new position of star (TODO, keep everyting relative to the star and have it always at (0,0,0))
         # # This piece of code is used when the position of the star is NOT fixed
@@ -673,11 +742,11 @@ class State():
             clump.z += clump.vz * self.dt
 
             # if clumps have escaped the cloud and are beyond view, remove them
-            if abs(clump.x) > 3 * self.boundary_box[1]:
+            if abs(clump.x) > 3 * self.radius_cloud[1]:
                 self.clumps.remove(clump)
-            elif abs(clump.y) > 3 * self.boundary_box[1]:
+            elif abs(clump.y) > 3 * self.radius_cloud[1]:
                 self.clumps.remove(clump)
-            elif abs(clump.z) > 3 * self.boundary_box[1]:
+            elif abs(clump.z) > 3 * self.radius_cloud[1]:
                 self.clumps.remove(clump)
 
         # update time
@@ -691,7 +760,7 @@ class State():
         fig.set_size_inches(10, 10) # 10 inches wide and long
 
         # creating ticks on axis
-        amount_of_pc = int(self.boundary_box[1] / pc) * 2 + 1
+        amount_of_pc = int(self.radius_cloud[1] / pc) * 2 + 1
         max_amount_ticks = 21
         factor_pc = int(amount_of_pc / max_amount_ticks) + 1
         amount_of_ticks = int(amount_of_pc / factor_pc) + 1
@@ -708,13 +777,13 @@ class State():
 
             if self.star:
                 ax.scatter(self.star.x, self.star.y, self.star.z, s= 8e4 * \
-                           self.star.R**2 / self.boundary_box[1]**2, c='red')
+                           self.star.R**2 / self.radius_cloud[1]**2, c='red')
             for clump in self.clumps:
                 ax.scatter(clump.x, clump.y, clump.z, s= np.pi * 1e5 * clump.R**2\
-                           / self.boundary_box[1]**2, c='blue')
+                           / self.radius_cloud[1]**2, c='blue')
 
 
-            ax.set_zlim(self.boundary_box)
+            ax.set_zlim(self.radius_cloud)
             ax.set_zlabel('Distance (pc)')
             ax.set_zticks(distance_values)
             ax.set_zticklabels(axis_labels)
@@ -743,8 +812,8 @@ class State():
         ax.set_yticks(distance_values)
         ax.set_yticklabels(axis_labels)
 
-        ax.set_xlim(self.boundary_box)
-        ax.set_ylim(self.boundary_box)
+        ax.set_xlim(self.radius_cloud)
+        ax.set_ylim(self.radius_cloud)
 
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
@@ -1046,11 +1115,11 @@ class State():
 
     def __str__(self):
         if self.toggle_3D:
-            return f"{self.amount_clumps} clumps in a {self.boundary_box[1]}x\
-                   {self.boundary_box[1]}x{self.boundary_box[1]} box"
+            return f"{self.amount_clumps} clumps in a {self.radius_cloud[1]}x\
+                   {self.radius_cloud[1]}x{self.radius_cloud[1]} box"
         else:
-            return f"{self.amount_clumps} clumps in a {self.boundary_box[1]}x\
-                   {self.boundary_box[1]} box"
+            return f"{self.amount_clumps} clumps in a {self.radius_cloud[1]}x\
+                   {self.radius_cloud[1]} box"
 
 
 class Object():
@@ -1115,7 +1184,7 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
                     transform=ax_scat.transAxes, ha="center")
 
     # creating ticks on axis
-    amount_of_pc = int(state.boundary_box[1] / pc) * 2 + 1
+    amount_of_pc = int(state.radius_cloud[1] / pc) * 2 + 1
     max_amount_ticks = 21
     factor_pc = int(amount_of_pc / max_amount_ticks) + 1
     amount_of_ticks = int(amount_of_pc / factor_pc) + 1
@@ -1134,8 +1203,8 @@ def animation(state, amount_of_frames, niterations, size_box, animate_CM, animat
     ax_scat.set_yticks(distance_values)
     ax_scat.set_yticklabels(axis_labels)
 
-    ax_scat.set_xlim(state.boundary_box)
-    ax_scat.set_ylim(state.boundary_box)
+    ax_scat.set_xlim(state.radius_cloud)
+    ax_scat.set_ylim(state.radius_cloud)
 
     def update_scat(frame):
         if animate_HII and state.star and state.HII_radius:
@@ -1259,7 +1328,7 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
     This function saves a frame of the scatter animation.
     """
     # creating ticks on axis
-    amount_of_pc = int(state.boundary_box[1] / pc) * 2 + 1
+    amount_of_pc = int(state.radius_cloud[1] / pc) * 2 + 1
     max_amount_ticks = 21
     factor_pc = int(amount_of_pc / max_amount_ticks) + 1
     amount_of_ticks = int(amount_of_pc / factor_pc) + 1
@@ -1311,8 +1380,8 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         ax.set_yticks(distance_values)
         ax.set_yticklabels(axis_labels)
 
-        ax.set_xlim(state.boundary_box * 1.5)
-        ax.set_ylim(state.boundary_box * 1.5)
+        ax.set_xlim(state.radius_cloud * 1.5)
+        ax.set_ylim(state.radius_cloud * 1.5)
 
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
@@ -1365,9 +1434,9 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         ax.set_zticks(distance_values)
         ax.set_zticklabels(axis_labels)
 
-        ax.set_xlim(state.boundary_box)
-        ax.set_ylim(state.boundary_box)
-        ax.set_zlim(state.boundary_box)
+        ax.set_xlim(state.radius_cloud)
+        ax.set_ylim(state.radius_cloud)
+        ax.set_zlim(state.radius_cloud)
 
         ax.set_xlabel('Distance (pc)')
         ax.set_ylabel('Distance (pc)')
@@ -1519,14 +1588,17 @@ def set_up():
     """
     This function contains all the input values. The user adjusts them.
     """
+
+    print("############################################# BEGIN ##################################################################")
+
     # simulation settings
     time_frame =  0.2 * Myr
     niterations = 2000
-    size_box = 100 * pc
+    size_box = 13 * pc
     toggle_3D = False
 
     # animation settings
-    boundary_box = -size_box/2, size_box/2
+    radius_cloud = -6.5 * pc, 6.5 * pc
     amount_of_frames = int(niterations / 10)
     dt = time_frame / niterations # s
     weltgeist_data_file = "HII region expansion"
@@ -1537,7 +1609,7 @@ def set_up():
 
     # clump settings
     use_Sams_clump_data = False
-    amount_clumps = 2
+    amount_clumps = 1
     cloud_mass = 3400 * m_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     max_velocity_fraction = 0
@@ -1578,7 +1650,7 @@ def set_up():
     state = State(toggle_3D, \
                   amount_clumps, \
                   dt, \
-                  boundary_box, \
+                  radius_cloud, \
                   clump_distribution, \
                   max_velocity_fraction, \
                   curl_fraction, \
@@ -1604,10 +1676,14 @@ def set_up():
     state.gravity_clumps_on = False
     state.gravity_BGG_on = False
     state.clump_evaportation_on = True
+    state.drag_on = True
 
     state.stellar_wind_on = False # TODO
     state.radiation_pressure_on = False # TODO
     state.gas_pressure_on = False # TODO
+
+    # DEBUGGING
+    state.print_info = False
 
     if niterations < amount_of_frames:
         raise Exception("Amount_of_frames is higher than niterations")
