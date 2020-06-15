@@ -67,7 +67,8 @@ class State():
         self.T0 = None
         self.Tion = None
         self.size_cell = None
-        self.ncells = None
+        self.size_viewing_window = None
+        self.HII_region_thickness = None
 
         self.print_info = False
 
@@ -249,11 +250,12 @@ class State():
         if self.use_weltgeist_dummy_data:
             self.Get_HII_radius()
             self.current_nH_profile = {}
-            for i in range(self.ncells):
+            ncells = int(1.5 * self.size_viewing_window / self.size_cell)
+            for i in range(ncells):
                 current_radius = self.size_cell * i
                 if current_radius < self.HII_radius:
                     self.current_nH_profile[self.size_cell * i] = 0
-                else:
+                elif current_radius < self.radius_cloud:
                     # if this is the shell containing the HII region
                     previous_radius = self.size_cell * (i - 1)
                     if previous_radius < self.HII_radius:
@@ -264,6 +266,11 @@ class State():
                         self.current_nH_profile[self.size_cell * i] = n_HII
 
                     self.current_nH_profile[self.size_cell * i] = self.n0
+                # TODO: add thickness of the HII region
+                # elif self.HII_radius + self.HII_region_thickness > self.radius_cloud
+                #
+                elif current_radius > self.radius_cloud:
+                    self.current_nH_profile[self.size_cell * i] = 0
 
         # when using the actual weltgeist data
         else:
@@ -287,7 +294,8 @@ class State():
         if self.use_weltgeist_dummy_data:
             self.Get_HII_radius()
             self.current_T_profile = {}
-            for i in range(self.ncells):
+            ncells = int(1.5 * self.size_viewing_window / self.size_cell)
+            for i in range(ncells):
                 current_radius = self.size_cell * i
                 if current_radius < self.HII_radius:
                     self.current_T_profile[self.size_cell * i] = self.Tion
@@ -317,7 +325,8 @@ class State():
         if self.use_weltgeist_dummy_data:
             self.Get_HII_radius()
             self.current_photon_profile = {}
-            for i in range(self.ncells):
+            ncells = int(1.5 * self.size_viewing_window / self.size_cell)
+            for i in range(ncells):
                 current_radius = self.size_cell * i
                 if current_radius < self.HII_radius:
                     recombination = self.Get_recombination(current_radius)
@@ -339,6 +348,16 @@ class State():
             for remove_key in remove_keys:
                 del self.weltgeist_data[remove_key]
 
+    def Get_BGG_outer_edge(self):
+        """
+        This function find the outer edge of the BGG. TODO
+        """
+        # when using dummy data to safe time. Often to test functions
+        if self.use_weltgeist_dummy_data:
+            HII_equilibrium_radius = 4 * pc
+            t_rec = 2 * Myr
+            self.HII_radius = HII_equilibrium_radius * (1 - np.e**(-self.time / t_rec))**(1/3)
+
     def Get_HII_radius(self):
         """
         This function returns the finds the radius of the HII region, which is
@@ -346,8 +365,14 @@ class State():
         """
         # when using dummy data to safe time. Often to test functions
         if self.use_weltgeist_dummy_data:
-            # print("test")
-            self.HII_radius = 8 * pc / Myr * self.time # the HII region has a radius of 6.5pc after 10 Myr
+            # # This code is to replicate a HII region which has an equilibrium radius
+            # HII_equilibrium_radius = 3 * pc
+            # t_rec = 2 * Myr
+            # self.HII_radius = HII_equilibrium_radius * (1 - np.e**(-self.time / t_rec))**(1/3)
+
+            self.HII_radius = 8 * pc * self.time / Myr
+
+
 
         # when using the actual Weltgeist data
         else:
@@ -662,7 +687,6 @@ class State():
             print()
 
         for clump in self.clumps:
-
             # get the mass density of the BGG
             clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
             for distance in self.current_nH_profile:
@@ -694,16 +718,14 @@ class State():
             clump.ay = 0
             clump.az = 0
 
-        # update new particle density (nH) profile for this time step
+        # update all information about the BGG
         self.Get_nH_profile()
         self.Get_T_profile()
         self.Get_photon_profile()
+        self.Get_HII_radius()
 
         # determine new CM of cloud
         self.Find_CM()
-
-        # update the new HII region radius
-        self.Get_HII_radius()
 
         # check for collisions. If so, merge the two bodies
         self.Collision()
@@ -741,11 +763,11 @@ class State():
             clump.z += clump.vz * self.dt
 
             # if clumps have escaped the cloud and are beyond view, remove them
-            if abs(clump.x) > 3 * self.radius_cloud:
+            if abs(clump.x) > self.size_viewing_window / 1.9: # 1.9 instead of 2 so the clump will go out of frame before being removed
                 self.clumps.remove(clump)
-            elif abs(clump.y) > 3 * self.radius_cloud:
+            elif abs(clump.y) > self.size_viewing_window / 1.9:
                 self.clumps.remove(clump)
-            elif abs(clump.z) > 3 * self.radius_cloud:
+            elif abs(clump.z) > self.size_viewing_window / 1.9:
                 self.clumps.remove(clump)
 
         # update time
@@ -981,7 +1003,6 @@ class State():
                     clump1.R = self.Radius_clump(clump1.m)
                     clump1.V = 4 / 3 * np.pi * clump1.R**3
                     clump1.rho = clump1.m / clump1.V
-                    print(clump1.rho)
                     self.clumps.remove(clump2)
                 j += 1
             i += 1
@@ -1045,11 +1066,7 @@ class State():
 
     def __str__(self):
         if self.toggle_3D:
-            return f"{self.amount_clumps} clumps in a {self.radius_cloud}x\
-                   {self.radius_cloud}x{self.radius_cloud} box"
-        else:
-            return f"{self.amount_clumps} clumps in a {self.radius_cloud}x\
-                   {self.radius_cloud} box"
+            return f"{self.amount_clumps} clumps in a r={self.radius_cloud} size cloud"
 
 
 class Object():
@@ -1100,11 +1117,6 @@ def animation(state, amount_of_frames, niterations, size_viewing_window, animate
 
     ax_scat.grid(True)
 
-    if animate_HII and state.star:
-        # put in background color representing background gas
-        back_ground_gas = ax_scat.scatter(0, 0, s=1.24e6, \
-                          label = "Background gas", facecolor = "lightsalmon")
-
     # create scatter template
     scat = ax_scat.scatter(x, y, label = "Gas clumps", facecolor = "blue")
     # HII_region = ax_scat.scatter(x, y, label = "HII region", facecolor = "white")
@@ -1137,10 +1149,23 @@ def animation(state, amount_of_frames, niterations, size_viewing_window, animate
     ax_scat.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
 
     def update_scat(frame):
+        if animate_HII and state.star:
+            # put in background color representing background gas
+            # Find the outer edge of the background gas
+            largest_distance = 0
+            for distance in state.current_nH_profile:
+                if state.current_nH_profile[distance] > 0.9 * state.n0:
+                    largest_distance = distance
+
+            back_ground_gas = ax_scat.scatter(0, 0, s=1.24e6 * largest_distance**2\
+                              * size_viewing_window**(-2), label = "Background gas", \
+                              facecolor = "lightsalmon")
+
         if animate_HII and state.star and state.HII_radius:
             HII_region = ax_scat.scatter(state.star.x, state.star.y, \
-                         s=1.24e6 * state.HII_radius**2 * size_viewing_window**(-2), \
-                         label = "HII region", facecolor = "#ffffff")
+                         s=1.24e6 * state.HII_radius**2 * \
+                         size_viewing_window**(-2), label = "HII region", \
+                         facecolor = "#ffffff")
 
         offsets = []
         sizes = []
@@ -1191,7 +1216,7 @@ def animation(state, amount_of_frames, niterations, size_viewing_window, animate
                        interval = 10, repeat=True, blit=True)
     plt.show()
 
-def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scatter, animate_3D_scatter, save_collision_distance_to_CM_spectrum, save_mass_spectrum, save_number_density, save_impact_velocity, save_impact_angle_hist, save_impact_angle_vs_distance, animate_HII):
+def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scatter, animate_3D_scatter, save_collision_distance_to_CM_spectrum, save_mass_spectrum, save_number_density, save_impact_velocity, save_impact_angle_hist, save_impact_angle_vs_distance, animate_HII, size_viewing_window):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
@@ -1211,12 +1236,12 @@ def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scat
         # saving frames for the scatter animation
         if animate_2D_scatter:
             file_name = "frame" + filling_zeros + str(frame)
-            save_scatter_frame(state, file_name, animate_CM, True, False, animate_HII)
+            save_scatter_frame(state, file_name, animate_CM, True, False, animate_HII, size_viewing_window)
 
         # saving frames for the scatter animation
         if animate_3D_scatter:
             file_name = "frame" + filling_zeros + str(frame)
-            save_scatter_frame(state, file_name, animate_CM, False, True, animate_HII)
+            save_scatter_frame(state, file_name, animate_CM, False, True, animate_HII, size_viewing_window)
 
         # have 10 times less plots than frames of the animation
         if frame % 10 == 0:
@@ -1253,7 +1278,7 @@ def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scat
         for _ in range(step_size):
             state.Step()
 
-def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate_3D_scatter, animate_HII):
+def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate_3D_scatter, animate_HII, size_viewing_window):
     """
     This function saves a frame of the scatter animation.
     """
@@ -1278,8 +1303,15 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
 
         # plot HII region and background gas
         if animate_HII and state.star:
-            plt.scatter(0, 0, s=1.24e6, label = "Background gas", \
-            facecolor = "lightblue")
+            # Find the outer edge of the background gas
+            largest_distance = 0
+            for distance in state.current_nH_profile:
+                if state.current_nH_profile[distance] > 0.9 * state.n0:
+                    largest_distance = distance
+
+            plt.scatter(0, 0, s=1.24e6 * largest_distance**2\
+                        * size_viewing_window**(-2), label = "Background gas", \
+                        facecolor = "lightblue")
 
             plt.scatter(state.star.x, state.star.y, s=1.24e6 * state.HII_radius**2\
                         * state.size_viewing_window**(-2), label = "HII region", \
@@ -1522,14 +1554,14 @@ def set_up():
     print("############################################# BEGIN ##################################################################")
 
     # simulation settings
-    time_frame =  1 * Myr
-    niterations = 2000
+    time_frame =  2 * Myr
+    niterations = 10000
     toggle_3D = False
 
     # animation settings
-    size_viewing_window = 30 * pc
+    size_viewing_window = 15 * pc
     radius_cloud = 6.5 * pc
-    amount_of_frames = int(niterations / 10)
+    amount_of_frames = int(niterations / 30)
     dt = time_frame / niterations # s
     weltgeist_data_file = "HII region expansion"
 
@@ -1539,7 +1571,7 @@ def set_up():
 
     # clump settings
     use_Sams_clump_data = False
-    amount_clumps = 1
+    amount_clumps = 10
     cloud_mass = 3400 * m_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     max_velocity_fraction = 0
@@ -1550,8 +1582,7 @@ def set_up():
     n0 = 1e8 # m^-3, standard particle density of the background gas_pressure_on
     T0 = 10 # K, temperature of neutral gas (not touched by radiation yet)
     Tion = 8400 # K, temperature of ionized hydrogen
-    ncells = 512
-    size_cell = radius_cloud * 2 / ncells
+    size_cell = pc / 20
     import_weltgeist_data = False # if this is False, the program will use dummy data
     animate_HII = True
 
@@ -1560,20 +1591,20 @@ def set_up():
     clump_distribution = "constant"
     # clump_distribution = "power_law"
 
-    make_animation = True
     animate_CM = False
     init_star = True
 
     # SAVING PLOTS
+    animate_live = True # "animate_live" and "save_data" can't be both true
     save_data = False # if this value is False, all other toggle save data's are ignored
     animate_2D_scatter = True
-    animate_3D_scatter = True
-    save_collision_distance_to_CM_spectrum = True
-    save_mass_spectrum = True
-    save_number_density = True
-    save_impact_velocity = True
-    save_impact_angle_hist = True # this figure just counts the different impact angles
-    save_impact_angle_vs_distance = True # this figure compares the different impact angles to their distance to CM
+    animate_3D_scatter = False
+    save_collision_distance_to_CM_spectrum = False
+    save_mass_spectrum = False
+    save_number_density = False
+    save_impact_velocity = False
+    save_impact_angle_hist = False # this figure just counts the different impact angles
+    save_impact_angle_vs_distance = False # this figure compares the different impact angles to their distance to CM
 
 
     # initializing begin state
@@ -1592,8 +1623,15 @@ def set_up():
     state.T0 = T0
     state.Tion = Tion
     state.size_cell = size_cell
-    state.ncells = ncells
+    state.HII_region_thickness = 0.5 * pc
+    state.size_viewing_window = size_viewing_window
     state.QH = QH
+
+    # initialize all information about the BGG
+    state.Get_nH_profile()
+    state.Get_T_profile()
+    state.Get_photon_profile()
+    state.Get_HII_radius()
 
     if init_star:
         state.Initiate_star(M_star)
@@ -1602,9 +1640,9 @@ def set_up():
         state.Import_weltgeist_data(weltgeist_data_file)
 
     # toggle force parameters
-    state.gravity_star_on = False
-    state.gravity_clumps_on = False
-    state.gravity_BGG_on = False
+    state.gravity_star_on = True
+    state.gravity_clumps_on = True
+    state.gravity_BGG_on = True
     state.clump_evaportation_on = True
     state.drag_on = True
 
@@ -1618,10 +1656,10 @@ def set_up():
     if niterations < amount_of_frames:
         raise Exception("Amount_of_frames is higher than niterations")
 
-    if make_animation and save_data:
-        raise Exception("Both make_animation and save_data are true. That's not allowed in this program.")
+    if animate_live and save_data:
+        raise Exception("Both animate_live and save_data are true. That's not allowed in this program.")
 
-    if make_animation:
+    if animate_live:
         animation(state, \
                   amount_of_frames, \
                   niterations, \
@@ -1643,7 +1681,8 @@ def set_up():
                    save_impact_velocity, \
                    save_impact_angle_hist, \
                    save_impact_angle_vs_distance, \
-                   animate_HII)
+                   animate_HII, \
+                   size_viewing_window)
 
 if __name__ == "__main__":
     set_up()
