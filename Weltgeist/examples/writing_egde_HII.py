@@ -57,20 +57,21 @@ def alpha_B_HII(temperature):
     a = 2.753e-14 * l**1.5 / (1. + (l/2.74)**0.407)**2.242
     return a
 
-def write_xlsx(cooling_on, gravity_on, file_name):
+def write_xlsx():
 
     # setting up all the data
     ncells = 512
     niterations = 10000
     step_iterations = 1
     n0 = 100.0 # cm^-3
-    rmax = 15 * wunits.pc # 20 pc box (times 2 because we want to move the edge)
-    ymax = 5e2 # height of plot/animation
+    rmax = 60 * wunits.pc # radius viewing window
+    R_cloud = 6.5 * wunits.pc
+    ymax = 1000 # height of plot/animation
     T0 = 10.0 # K
     gamma = 5.0/3.0 # monatomic gas (close enough...)
-    QH = 1e49 # photons per second emitted, roughly a 35 solar mass star
+    QH = 1e47
     Tion = 8400 # K
-
+    stop_time = 40 * Myr
 
 
     integrator = weltgeist.integrator.Integrator()
@@ -82,14 +83,15 @@ def write_xlsx(cooling_on, gravity_on, file_name):
 
     nanalytic = np.zeros((ncells))
     hydro = integrator.hydro
+    x = hydro.x[0:ncells]
+    hydro.nH[x > R_cloud] = 1.0
     weltgeist.sources.Sources().MakeRadiation(QH)
-    weltgeist.cooling.cooling_on = cooling_on
-    weltgeist.gravity.gravity_on = gravity_on
+    weltgeist.cooling.cooling_on = True
+    weltgeist.gravity.gravity_on = True
 
     # create excel file
-    file = "data/" + file_name + ".xlsx"
-    workbook = xlsxwriter.Workbook(file)
-    workbook = xlsxwriter.Workbook('data/HII region expansion.xlsx')
+    file_name = 'data/HII region expansion.xlsx'
+    workbook = xlsxwriter.Workbook(file_name)
     sheet = workbook.add_worksheet()
 
     # change width of all cells to make it more readable
@@ -103,7 +105,7 @@ def write_xlsx(cooling_on, gravity_on, file_name):
 
     colors = ["blue","red"]
     lines = []
-    for index in range(2):
+    for index in range(1):
         line = ax.plot([],[], lw=2, color=colors[index])[0]
         lines.append(line)
 
@@ -152,21 +154,11 @@ def write_xlsx(cooling_on, gravity_on, file_name):
             else:
                 photons_reach.append(0)
 
-        # find front edge of expansion HII region
-        x_edge = None # create variable in case "i_edge" isn't found yet
-        for i in range(len(nH)):
-            # start looping bakcwards (right to left)
-            if round(nH[len(nH) - i - 1]) != round(n0):
-                i_edge = len(nH) - i - 1
-                x_edge = x[i_edge]
-                break
-
         # stop saving data when the border of the box is almost reached
-        if x_edge:
-            if x_edge > 0.95 * rmax:
-                print("File closed")
-                workbook.close()
-                exit()
+        if integrator.time > stop_time:
+            print("File closed")
+            workbook.close()
+            exit()
 
         amount_of_properties = 5
 
@@ -194,14 +186,13 @@ def write_xlsx(cooling_on, gravity_on, file_name):
             sheet.write(step * (amount_of_properties + 1) + 5, i + 1, photons_reach[i])
 
 
-        if x_edge:
-            print(file_name, ": ", step * step_iterations, " iterations")
-            print("time: %.2f Myr" %(int(time) / Myr))
-            print("x_edge: %.2f pc" %(round(x_edge/pc/100, 2)))
-            print()
+        print(file_name, ": ", step * step_iterations, " iterations")
+        print("time: %.2f Myr" %(int(time) / Myr))
+        # print("x_edge: %.2f pc" %(round(x_edge/pc/100, 2)))
+        print()
 
-        xlist = [x, x]
-        ylist = [nH, T]
+        xlist = [x]
+        ylist = [nH]
 
         for lnum,line in enumerate(lines):
             line.set_data(xlist[lnum], ylist[lnum])
@@ -219,6 +210,4 @@ def write_xlsx(cooling_on, gravity_on, file_name):
 
 
 if __name__ == "__main__":
-    write_xlsx(cooling_on = False,
-               gravity_on = False,
-               file_name = "HII region expansion")
+    write_xlsx()
