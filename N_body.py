@@ -75,7 +75,6 @@ class State():
         self.time_delay = 0
         self.init_star = False
         self.init_HII = False
-        self.list_distances = None
         self.average_distance_to_source = {}
         self.initial_cloud_radius = None
         self.list_clump_count = {}
@@ -319,10 +318,6 @@ class State():
                 current_radius = size_cell * i
                 self.current_nH_profile[current_radius] = 0
 
-        self.list_distances = []
-        for distance in self.current_nH_profile:
-            self.list_distances.append(distance)
-
     def Get_T_profile(self):
         """
         This function get the current density profile of the background gas.
@@ -406,7 +401,7 @@ class State():
             self.outer_radius_cloud = 0
             for distance in self.current_nH_profile:
                 if self.current_nH_profile[distance] > 0.2 * self.n0:
-                    self.outer_radius_cloud = distance
+                    self.outer_radius_cloud = distance # cm to m
             if self.HII_radius > self.outer_radius_cloud:
                 self.outer_radius_cloud = self.HII_radius + 0.5 * pc
 
@@ -432,14 +427,15 @@ class State():
                     highest_nH = 0
                     for distance in self.current_nH_profile:
                         if self.current_nH_profile[distance] > highest_nH:
-                            self.HII_radius = distance
+                            highest_nH = self.current_nH_profile[distance]
+                            self.HII_radius = distance # cm to m
 
         else:
             self.HII_radius = 0
 
     def Get_recombination(self, radius):
         """
-        This function calculates the amount of photons absorbed by recombining
+        This function is a dummy which calculates the amount of photons absorbed by recombining
         hydrogen atoms.
         """
         # when using dummy data for the particle density
@@ -459,7 +455,7 @@ class State():
         amount_of_photons = None
         clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
         for distance in self.current_photon_profile:
-            if distance > clump_distance:
+            if distance / 100 > clump_distance:  # cm to m, thus devided by 100
                 amount_of_photons = self.current_photon_profile[distance]
                 break
 
@@ -755,7 +751,7 @@ class State():
             clump_distance = np.sqrt(clump.x**2 + clump.y**2 + clump.z**2) # distance of clump to star
             rho_BGG = None
             for distance in self.current_nH_profile:
-                if distance > clump_distance:
+                if distance / 100 > clump_distance: # cm to m, thus /100
                     rho_BGG = self.current_nH_profile[distance] * m_H  # mass density of the BGG
                     break
             if not rho_BGG:
@@ -784,6 +780,12 @@ class State():
             clump.ax = 0
             clump.ay = 0
             clump.az = 0
+
+        # initiate star after delay time
+        if not self.star:
+            if self.init_star:
+                if self.time > self.time_delay:
+                    self.Initiate_star(self.M_star)
 
         # update all information about the BGG
         if self.init_BGG:
@@ -835,14 +837,14 @@ class State():
             clump.R = self.Radius_clump(clump.m)
 
             # if clumps have escaped the cloud and are beyond view, remove them
-            if abs(clump.x) > self.size_viewing_window / 1.9: # 1.9 instead of 2 so the clump will go out of frame before being removed
-                if abs(clump.x) > 4 * self.initial_cloud_radius:
+            if abs(clump.x) > self.size_viewing_window: # 1.9 instead of 2 so the clump will go out of frame before being removed
+                if abs(clump.x) > 5 * self.initial_cloud_radius:
                     self.clumps.remove(clump)
-            elif abs(clump.y) > self.size_viewing_window / 1.9:
-                if abs(clump.y) > 4 * self.initial_cloud_radius:
+            elif abs(clump.y) > self.size_viewing_window:
+                if abs(clump.y) > 5 * self.initial_cloud_radius:
                     self.clumps.remove(clump)
-            elif abs(clump.z) > self.size_viewing_window / 1.9:
-                if abs(clump.z) > 4 * self.initial_cloud_radius:
+            elif abs(clump.z) > self.size_viewing_window:
+                if abs(clump.z) > 5 * self.initial_cloud_radius:
                     self.clumps.remove(clump)
 
         # reset the collision data tracker when the HII region initializes
@@ -1320,11 +1322,15 @@ def animation(time_frame, state, amount_of_frames, niterations, size_viewing_win
                        interval = 10, repeat=True, blit=True)
     plt.show()
 
-def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scatter, animate_3D_scatter, save_collision_distance_to_CM_spectrum, save_mass_spectrum, save_number_density, save_impact_velocity, save_impact_angle_hist, save_impact_angle_vs_distance, save_mass_distance, save_average_distance_to_source, init_HII, size_viewing_window):
+def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scatter, animate_3D_scatter, save_collision_distance_to_CM_spectrum, save_mass_spectrum, save_number_density, save_impact_velocity, save_impact_angle_hist, save_impact_angle_vs_distance, save_mass_distance, save_average_distance_to_source, init_HII, size_viewing_window, folder):
     """
     This function animates evolution of the set up. There is an option for live
     animation or the making of GIF
     """
+    # reset "begin_time" to exclude time spend on loading the HII region data
+    # this gives a better time estimate
+    state.begin_time = time.time()
+
     # Have the first step done so everything is initialized
     state.Step()
 
@@ -1336,6 +1342,10 @@ def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scat
     # looping all steps and frames
     for frame in range(1, amount_of_frames + 1):
 
+        # if there are no more clumps left, quit
+        if len(state.clumps) == 0:
+            quit()
+
         # information feedback to estimate duration of animation
         duration_calculator(state, frame, amount_of_frames)
 
@@ -1345,63 +1355,69 @@ def save_plots(state, amount_of_frames, niterations, animate_CM, animate_2D_scat
         # saving frames for the scatter animation
         if animate_2D_scatter:
             file_name = "frame" + filling_zeros + str(frame)
-            save_scatter_frame(state, file_name, animate_CM, True, False, init_HII, size_viewing_window)
+            save_scatter_frame(state, file_name, animate_CM, True, False, init_HII, size_viewing_window, folder)
+            save_scatter_frame_large(state, file_name, animate_CM, True, False, init_HII, size_viewing_window, folder)
 
         # saving frames for the scatter animation
         if animate_3D_scatter:
             file_name = "frame" + filling_zeros + str(frame)
-            save_scatter_frame(state, file_name, animate_CM, False, True, init_HII, size_viewing_window)
+            save_scatter_frame(state, file_name, animate_CM, False, True, init_HII, size_viewing_window, folder)
+            save_scatter_frame_large(state, file_name, animate_CM, False, True, init_HII, size_viewing_window, folder)
 
         # have 10 times less plots than frames of the animation
-        if frame % 10 == 0:
+        if frame % 100 == 0:
             # saving plots of the distances of the clump collisions to CM
             if save_collision_distance_to_CM_spectrum:
                 file_name= "distance_plot" + filling_zeros + str(frame)
-                save_collision_distance_plot(state, file_name)
+                save_collision_distance_plot(state, file_name, folder)
 
             # saving plots of the mass spectra
             if save_mass_spectrum:
                 file_name= "mass_spectrum" + filling_zeros + str(frame)
-                save_mass_spectrum_plot(state, file_name)
+                save_mass_spectrum_plot(state, file_name, folder)
 
             # saving plots of number density of the clumps compared to distance to CM
             if save_number_density:
                 file_name= "number_density" + filling_zeros + str(frame)
-                save_number_density_plot(state, file_name)
+                save_number_density_plot(state, file_name, folder)
 
             # saving plots of the impact velocities of clump collisions
             if save_impact_velocity:
                 file_name= "collision_impact_velocity" + filling_zeros + str(frame)
-                save_impact_velocity_plot(state, file_name)
+                save_impact_velocity_plot(state, file_name, folder)
 
             # saving histograms of the frequency of impact angles of clump collisions
             if save_impact_angle_hist:
                 file_name= "collision_impact_angle_hist" + filling_zeros + str(frame)
-                save_impact_angle_hist_plot(state, file_name)
+                save_impact_angle_hist_plot(state, file_name, folder)
 
             # saving plots of the impact angles vs distance to CM of clump collisions
             if save_impact_angle_vs_distance:
                 file_name= "collision_impact_angle" + filling_zeros + str(frame)
-                save_impact_angle_vs_distance_plot(state, file_name)
+                save_impact_angle_vs_distance_plot(state, file_name, folder)
 
             if save_mass_distance:
                 file_name= "mass_distance" + filling_zeros + str(frame)
-                save_mass_distance_plot(state, file_name)
+                save_mass_distance_plot(state, file_name, folder)
 
             if save_average_distance_to_source:
                 file_name= "average_distance" + filling_zeros + str(frame)
                 state.Save_average_distance_to_source()
-                save_average_distance_to_source_plot(state, file_name)
+                save_average_distance_to_source_plot(state, file_name, folder)
 
             if save_average_distance_to_source:
                 file_name= "clump_count" + filling_zeros + str(frame)
                 state.Save_clump_count()
-                save_clump_count(state, file_name)
+                save_clump_count(state, file_name, folder)
+
+            if save_average_distance_to_source:
+                file_name= "collision_freq" + filling_zeros + str(frame)
+                save_collision_freq_plot(state, file_name, folder)
 
         for _ in range(step_size):
             state.Step()
 
-def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate_3D_scatter, init_HII, size_viewing_window):
+def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate_3D_scatter, init_HII, size_viewing_window, folder):
     """
     This function saves a frame of the scatter animation.
     """
@@ -1468,7 +1484,7 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         plt.title("State of cloud after %.2f Myr" %(state.time / Myr))
         plt.grid()
 
-        fig.savefig(my_path + "measurements/measurement - current/scatter_frames_2D/" + file_name + ".png")
+        fig.savefig(my_path + folder + "/scatter_frames_2D/" + file_name + ".png")
         plt.close(fig)
 
     # if the simulation is in 3D
@@ -1479,9 +1495,10 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
 
         # Plot the BGG
         if state.init_BGG:
-            ax.scatter(0, 0, s=0.33e6 * state.outer_radius_cloud**2\
-                        * state.size_viewing_window**(-2), label = "Background gas", \
-                        facecolor = "#0390fc", alpha=0.5)
+            if state.HII_radius < size_viewing_window:
+                ax.scatter(0, 0, s=0.33e6 * state.outer_radius_cloud**2\
+                            * state.size_viewing_window**(-2), label = "Background gas", \
+                            facecolor = "#0390fc", alpha=0.5)
 
         # plot HII region
         if init_HII and state.star and state.init_BGG:
@@ -1526,10 +1543,137 @@ def save_scatter_frame(state, file_name, animate_CM, animate_2D_scatter, animate
         plt.title("State of cloud after %.2f Myr" %(state.time / Myr))
         plt.grid()
 
-        fig.savefig(my_path + "measurements/measurement - current/scatter_frames_3D/" + file_name + ".png")
+        fig.savefig(my_path + folder + "/scatter_frames_3D/" + file_name + ".png")
         plt.close(fig)
 
-def save_collision_distance_plot(state, file_name):
+def save_scatter_frame_large(state, file_name, animate_CM, animate_2D_scatter, animate_3D_scatter, init_HII, size_viewing_window, folder):
+    """
+    This function saves a frame of the scatter animation.
+    """
+    size_viewing_window = size_viewing_window * 5
+
+    # creating ticks on axis
+    amount_of_pc = int(size_viewing_window / pc) + 1
+    max_amount_ticks = 21
+    factor_pc = int(amount_of_pc / max_amount_ticks) + 1
+    amount_of_ticks = int(amount_of_pc / factor_pc) + 1
+    middle_tick = int(amount_of_ticks / 2) # should be +1 but since python starts counting at 0, i is the (i+1)th item
+    distance_values = []
+    axis_labels = []
+    for i in range(amount_of_ticks):
+        axis_labels.append((i - middle_tick) * factor_pc)
+        distance_values.append((i - middle_tick) * factor_pc * pc)
+
+    # if the simulation is in 2D
+    if animate_2D_scatter:
+        fig = plt.figure()
+        fig.set_size_inches(10, 10) # 10 inches wide and long
+        ax = fig.add_subplot(111)
+
+        # Plot the BGG
+        if state.init_BGG:
+            plt.scatter(0, 0, s=1.24e6 * state.outer_radius_cloud**2\
+                        * size_viewing_window**(-2), label = "Background gas", \
+                        facecolor = "#0390fc", alpha=0.5)
+
+        # plot HII region
+        if init_HII and state.star and state.init_BGG:
+            ax.scatter(0, 0, s=1.24e6 * state.HII_radius**2 * \
+                       size_viewing_window**(-2), label = "HII region", \
+                       facecolor = "white")
+
+        # plot clumps
+        for clump in state.clumps:
+            plt.scatter(clump.x, clump.y, s=1.24e6 * clump.R**2 * \
+                        size_viewing_window**(-2), label = "Clump", \
+                        facecolor = "#0303fc")
+
+        # plot star
+        if state.star:
+            plt.scatter(state.star.x, state.star.y, label="Star",\
+                        facecolor="red")
+
+        # plot centre of mass
+        if animate_CM:
+            plt.scatter(state.CM[0], state.CM[1], label = "Centre of Mass", \
+                        facecolor = "green")
+
+        ax.set_xticks(distance_values)
+        ax.set_xticklabels(axis_labels)
+        ax.set_yticks(distance_values)
+        ax.set_yticklabels(axis_labels)
+
+        ax.set_xlim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
+
+        ax.set_xlabel('Distance (pc)')
+        ax.set_ylabel('Distance (pc)')
+        plt.title("State of cloud after %.2f Myr" %(state.time / Myr))
+        plt.grid()
+
+        fig.savefig(my_path + folder + "/scatter_frames_2D_large/" + file_name + ".png")
+        plt.close(fig)
+
+    # if the simulation is in 3D
+    if animate_3D_scatter:
+        fig = plt.figure()
+        fig.set_size_inches(10, 10) # 10 inches wide and long
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot the BGG
+        if state.init_BGG:
+            if state.HII_radius < size_viewing_window:
+                ax.scatter(0, 0, s=0.33e6 * state.outer_radius_cloud**2\
+                            * size_viewing_window**(-2), label = "Background gas", \
+                            facecolor = "#0390fc", alpha=0.5)
+
+        # plot HII region
+        if init_HII and state.star and state.init_BGG:
+            ax.scatter(0, 0, 0, s=0.33e6 * state.HII_radius**2\
+                        * size_viewing_window**(-2), label = "HII region", \
+                        facecolor = "white", alpha=0.5)
+
+        # plot star
+        if state.star:
+            ax.scatter(state.star.x, state.star.y, state.star.z, label="Star",\
+                        facecolor="red")
+
+        # plot clumps
+        for clump in state.clumps:
+            ax.scatter(clump.x, clump.y, clump.z, s=1.24e6 * clump.R**2 * \
+                        size_viewing_window**(-2), label = "Clump", \
+                        facecolor = "#0303fc")
+
+        # plot centre of mass
+        if animate_CM:
+            ax.scatter(state.CM[0], state.CM[1], state.CM[2], label = "Centre of Mass", \
+                        facecolor = "green")
+
+        # settings that apply for both 2D and 3D
+        ax.set_xlabel('Distance (pc)')
+        ax.set_ylabel('Distance (pc)')
+        ax.set_zlabel('Distance (pc)')
+
+        ax.set_xticks(distance_values)
+        ax.set_xticklabels(axis_labels)
+        ax.set_yticks(distance_values)
+        ax.set_yticklabels(axis_labels)
+        ax.set_zticks(distance_values)
+        ax.set_zticklabels(axis_labels)
+
+        ax.set_xlim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_ylim(-size_viewing_window / 2, size_viewing_window / 2)
+        ax.set_zlim(-size_viewing_window / 2, size_viewing_window / 2)
+
+        ax.set_xlabel('Distance (pc)')
+        ax.set_ylabel('Distance (pc)')
+        plt.title("State of cloud after %.2f Myr" %(state.time / Myr))
+        plt.grid()
+
+        fig.savefig(my_path + folder + "/scatter_frames_3D_large/" + file_name + ".png")
+        plt.close(fig)
+
+def save_collision_distance_plot(state, file_name, folder):
     """
     This function saves a histogram of the distances of clump collisions to CM.
     """
@@ -1545,10 +1689,10 @@ def save_collision_distance_plot(state, file_name):
     ax.set_ylabel('Frequency')
     plt.gca().set_ylim(bottom=0)
     plt.title("Distance spectrum of clump collisions after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/collision_distance_plots/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/collision_distance_plots/" + file_name + ".png")
     plt.close(fig)
 
-def save_mass_spectrum_plot(state, file_name):
+def save_mass_spectrum_plot(state, file_name, folder):
     """
     This function saves a histogram of the mass specturm of the clumps of
     the current state
@@ -1566,10 +1710,10 @@ def save_mass_spectrum_plot(state, file_name):
     plt.gca().set_ylim(bottom=0)
     plt.gca().set_xlim(left=0)
     plt.title("Mass spectrum of the clumps after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/mass_spectrum_plots/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/mass_spectrum_plots/" + file_name + ".png")
     plt.close(fig)
 
-def save_number_density_plot(state, file_name):
+def save_number_density_plot(state, file_name, folder):
     """
     This function saves a histogram of the mass specturm of the clumps of
     the current state
@@ -1587,10 +1731,10 @@ def save_number_density_plot(state, file_name):
     ax.set_xlabel('Distance to CM (pc)')
     ax.set_ylabel('Frequency')
     plt.title("Number density of the clumps per distance to CM. Time = %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/number_density_plots/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/number_density_plots/" + file_name + ".png")
     plt.close(fig)
 
-def save_impact_velocity_plot(state, file_name):
+def save_impact_velocity_plot(state, file_name, folder):
     """
     This function saves a plot of the collision velocity vs the distance to CM.
     """
@@ -1607,10 +1751,10 @@ def save_impact_velocity_plot(state, file_name):
     ax.set_xlabel('Distance to CM (pc)')
     ax.set_ylabel('Impact velocity (pc/Myr)')
     plt.title("The impact velocity vs distance to CM after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/impact_velocity_plots/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/impact_velocity_plots/" + file_name + ".png")
     plt.close(fig)
 
-def save_impact_angle_hist_plot(state, file_name):
+def save_impact_angle_hist_plot(state, file_name, folder):
     """
     This function saves a hist of the impact angles of clump collisions
     """
@@ -1626,10 +1770,10 @@ def save_impact_angle_hist_plot(state, file_name):
     ax.set_ylabel('Frequency')
     plt.xlim([0, 180])
     plt.title("The impact angles of clump collisions after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/impact_angle_hist/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/impact_angle_hist/" + file_name + ".png")
     plt.close(fig)
 
-def save_impact_angle_vs_distance_plot(state, file_name):
+def save_impact_angle_vs_distance_plot(state, file_name, folder):
     """
     This function saves a plot of the impact angle vs the distance of the collision to CM
     """
@@ -1647,10 +1791,10 @@ def save_impact_angle_vs_distance_plot(state, file_name):
     ax.set_xlabel('Distance to CM (pc)')
     ax.set_ylabel('Impact angles of clump collisions (degree)')
     plt.title("The impact angles vs their distance to CM after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/impact_angle_vs_distance/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/impact_angle_vs_distance/" + file_name + ".png")
     plt.close(fig)
 
-def save_mass_distance_plot(state, file_name):
+def save_mass_distance_plot(state, file_name, folder):
     """
     This function saves a scatter plot of the mass distance relations of the clumps.
     """
@@ -1668,10 +1812,10 @@ def save_mass_distance_plot(state, file_name):
     ax.set_ylabel('log(Clump Mass / M_sun)')
     plt.gca().set_ylim(bottom=0)
     plt.title("The relation between clump mass and distance to CM after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/mass_distance/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/mass_distance/" + file_name + ".png")
     plt.close(fig)
 
-def save_average_distance_to_source_plot(state, file_name):
+def save_average_distance_to_source_plot(state, file_name, folder):
     """
     This function saves the average distance of each clump to the source for
     each time step.
@@ -1690,10 +1834,10 @@ def save_average_distance_to_source_plot(state, file_name):
     ax.set_ylabel('Average clump distance to Source / pc')
     plt.gca().set_ylim(bottom=0)
     plt.title("The average distance of clumps to the source after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/average_distance/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/average_distance/" + file_name + ".png")
     plt.close(fig)
 
-def save_clump_count(state, file_name):
+def save_clump_count(state, file_name, folder):
     """
     This function saves the average distance of each clump to the source for
     each time step.
@@ -1712,28 +1856,25 @@ def save_clump_count(state, file_name):
     ax.set_ylabel('Amount of clumps')
     plt.ylim([0, state.amount_clumps])
     plt.title("The amount of clumps after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/amount_of_clumps/" + file_name + ".png")
+    fig.savefig(my_path + folder + "/amount_of_clumps/" + file_name + ".png")
     plt.close(fig)
 
-def save_collision_freq_plot(state, file_name):
+def save_collision_freq_plot(state, file_name, folder):
     """
     This function saves the collision frequency.
     """
     # make a list with all distances of all clumps collisions
-    times = []
-    amount_of_clumps = []
-    for time in state.list_clump_count:
-        times.append(time / Myr)
-        amount_of_clumps.append(state.list_clump_count[time])
+    collisions = []
+    for collision in state.collision_data:
+        collisions.append(collision["time"] / Myr)
 
     fig, ax = plt.subplots(1, 1)
     fig.set_size_inches(10, 10) # 10 inches wide and long
-    plt.plot(times, amount_of_clumps)
+    ax.hist(collisions, rwidth=0.75, bins=20)
     ax.set_xlabel('Time / Myr')
-    ax.set_ylabel('Amount of clumps')
-    plt.ylim([0, state.amount_clumps])
-    plt.title("The amount of clumps after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
-    fig.savefig(my_path + "measurements/measurement - current/amount_of_clumps/" + file_name + ".png")
+    ax.set_ylabel('Collision frequency')
+    plt.title("The amount of collisions per time period after %.1f Myr. Initially %d clumps" %(state.time / Myr, state.amount_clumps))
+    fig.savefig(my_path + folder + "/collision_frequency/" + file_name + ".png")
     plt.close(fig)
 
 def duration_calculator(state, frame, amount_of_frames):
@@ -1753,26 +1894,23 @@ def duration_calculator(state, frame, amount_of_frames):
     min_left = int(sec_left / 60)
     hours_left = int(sec_left / 3600)
 
-    print("Frame %d / %d       Total time: %dh%dm%s     Time left:  %dh%dm%s    Sec left: %d" \
-          %(frame, amount_of_frames, total_hours, total_min%60, \
-          total_sec%60, hours_left, min_left%60, sec_left%60, \
-          sec_left)) #, end="\r")
-    print("Clumps: %d" %len(state.clumps))
-    print()
+    print("Frame %d / %d        Clumps left: %d       Total time: %dh%dm%s       Time left:  %dh%dm%s       Sec left: %d  " %(frame, amount_of_frames, len(state.clumps), total_hours, total_min%60, total_sec%60, hours_left, min_left%60, sec_left%60, sec_left) , end="\r")
+
 
 def set_up():
     """
     This function contains all the input values. The user adjusts them.
     """
 
-    print("############################################# BEGIN ##################################################################")
-    print("############# standard - 10x heavier clumps  ####################")
+    print()
+    print()
+    print("####################################### standard  ############################################")
 
     # simulation settings
-    time_frame =  60 * Myr
+    time_frame =  70 * Myr
     niterations = 20000
     toggle_3D = True
-    time_delay = 10 * Myr
+    time_delay = 20 * Myr
     size_viewing_window = 15 * pc
     radius_cloud = 6.5 * pc
     amount_of_frames = int(niterations / 10)
@@ -1787,7 +1925,7 @@ def set_up():
     # clump settings
     use_Sams_clump_data = False
     amount_clumps = 300
-    cloud_mass = 34000 * m_sun # obtained from the data Sam gave me, not containing background gas yet
+    cloud_mass = 3400 * m_sun # obtained from the data Sam gave me, not containing background gas yet
     initial_clump_mass = cloud_mass / amount_clumps
     max_velocity_fraction = 0.8
     curl_fraction = 1
@@ -1801,7 +1939,8 @@ def set_up():
     size_cell = pc / 20
     import_weltgeist_data = True # if this is False, the program will use dummy data
     HII_region_thickness =  0.75 * pc
-    weltgeist_data_file = "HII region expansion - standard"
+    weltgeist_data_file = "HII region expansion - standard/HII region expansion - standard"
+    folder = "measurements/standard"
     init_HII = True
 
     # choose one
@@ -1849,8 +1988,6 @@ def set_up():
                 initial_clump_mass, \
                 use_Sams_clump_data, \
                 random_movement_fraction)
-    if init_star:
-      state.Initiate_star(M_star)
 
     state.n0 = n0
     state.T0 = T0
@@ -1932,7 +2069,9 @@ def set_up():
                    save_mass_distance, \
                    save_average_distance_to_source, \
                    init_HII, \
-                   size_viewing_window)
+                   size_viewing_window, \
+                   folder)
+
 
 if __name__ == "__main__":
     set_up()
